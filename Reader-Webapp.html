@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Reader v2 - Safe & Local Premium eReader</title>
+<title>Reader v3 - Safe & Local Premium eReader</title>
 <meta name="description" content="A state-of-the-art, fully client-side premium document reader. Processes PDFs, DOCX, Markdown, and TXT files entirely inside the browser with built-in TTS and custom typography presets.">
 <meta name="theme-color" content="#9a3524">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -102,6 +102,8 @@
   .file-input-wrap:focus-within,
   .tb-btn:focus-visible, 
   .preset-arrow:focus-visible, 
+  .mobile-fab:focus-visible,
+  .bottom-sheet-handle:focus-visible,
   #focusRestore:focus-visible, 
   .mode-btn:focus-visible,
   .preset-window:focus-visible,
@@ -586,7 +588,13 @@
     cursor: pointer; transition: color 0.2s; line-height: 1.4;
   }
   .toc-item:last-child { border-bottom: none; }
-  .toc-item:hover, .toc-item:focus-visible { color: var(--accent); outline: none; }
+  .toc-item:hover { color: var(--accent); }
+  .toc-item:focus-visible {
+    color: var(--accent);
+    outline: 2.5px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
 
   /* Premium Settings Drawer */
   .settings-drawer {
@@ -756,6 +764,18 @@
      transform: translateY(0);
   }
 
+  .reader-status-message {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    width: min(680px, calc(100vw - 32px));
+    margin-top: 0;
+    z-index: 1003;
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.12);
+    pointer-events: none;
+  }
+
   /* Floating Elegant Dock for Mobile */
   .mobile-fab {
     display: none;
@@ -789,10 +809,14 @@
   
   .bottom-sheet-handle {
     display: none;
+    appearance: none;
+    -webkit-appearance: none;
     width: 40px;
     height: 5px;
     background: rgba(154, 53, 36, 0.2);
+    border: 0;
     border-radius: 3px;
+    padding: 0;
     margin: -4px auto 12px;
     cursor: pointer;
   }
@@ -827,12 +851,16 @@
     .reader-content.fs-large { font-size: 21px; }
     .reader-content.fs-xl { font-size: 24px; }
     
-    .mobile-fab {
+    .mobile-fab.reader-active {
       display: flex;
     }
     
     .bottom-sheet-handle {
       display: block;
+    }
+
+    .reader-status-message {
+      bottom: 96px;
     }
     
     #toolbar {
@@ -926,7 +954,7 @@
     <button id="saveEditBannerBtn" type="button">Save & Exit</button>
   </div>
 
-  <button class="mobile-fab" id="mobileFab" type="button" aria-label="Toggle Reading Settings">🎛️</button>
+  <button class="mobile-fab" id="mobileFab" type="button" aria-label="Toggle Reading Settings" aria-controls="toolbar" aria-expanded="false">🎛️</button>
 
   <main id="inputView">
     <div class="continue-banner" id="continueBanner">
@@ -961,7 +989,7 @@
     <button class="back-btn" id="backBtn" type="button" aria-label="Go Back">&#8592;</button>
 
     <div id="toolbar">
-      <div class="bottom-sheet-handle" id="bottomSheetHandle"></div>
+      <button class="bottom-sheet-handle" id="bottomSheetHandle" type="button" aria-label="Collapse Reading Settings"></button>
       
       <div class="toolbar-top-row">
         <button class="tb-btn" id="tocBtn" type="button" title="Table of Contents" aria-label="Table of Contents">&#x2630;</button>
@@ -977,7 +1005,7 @@
         <button class="tb-btn" id="autoScrollBtn" type="button" title="Auto Scroll" aria-label="Auto Scroll">&#x25B6;</button>
         <button class="tb-btn" id="ttsBtn" type="button" title="Read Aloud" aria-label="Read Aloud">&#x1F50A;</button>
         <button class="tb-btn" id="rulerBtn" type="button" title="Reading Ruler" aria-label="Reading Ruler">📏 Ruler</button>
-        <button class="tb-btn" id="settingsBtn" type="button" title="Reading Settings" aria-label="Reading Settings">⚙️ Settings</button>
+        <button class="tb-btn" id="settingsBtn" type="button" title="Reading Settings" aria-label="Reading Settings" aria-controls="settingsDrawer" aria-expanded="false">⚙️ Settings</button>
         <button class="tb-btn" id="downloadBtn" type="button" title="Download Text" aria-label="Download Text">&#x2B07;</button>
         <div class="tb-sep"></div>
         <button class="tb-btn" id="editBtn" type="button" title="Edit Text" aria-label="Edit Text">&#x270E; Edit</button>
@@ -1062,6 +1090,7 @@
     <!-- Semantic article element for reader focus -->
     <article class="reader-content fs-medium" id="readerContent"></article>
     <div class="wordcount" id="wordCount"></div>
+    <div class="status-message reader-status-message" id="readerStatusMessage" role="status" aria-live="polite"></div>
     <button id="focusRestore" type="button" title="Show UI" aria-label="Show UI">&#8853;</button>
   </section>
 
@@ -1218,6 +1247,7 @@
       arrowRight: document.getElementById('arrowRight'),
       progressBar: document.getElementById('progressBar'),
       statusMessage: document.getElementById('statusMessage'),
+      readerStatusMessage: document.getElementById('readerStatusMessage'),
       tocDialog: document.getElementById('tocDialog'),
       closeTocBtn: document.getElementById('closeTocBtn'),
       tocBody: document.getElementById('tocBody'),
@@ -1323,23 +1353,28 @@
     };
 
     // ===== Status & Loader UI Functions =====
+    function updateStatusTarget(target, message, type) {
+      if (!target) return;
+      const baseClass = target === els.readerStatusMessage ? 'status-message reader-status-message' : 'status-message';
+      target.textContent = message || '';
+      target.className = message ? `${baseClass} show ${type}` : baseClass;
+    }
+
     function showStatus(message, type = 'info') {
-      if (!els.statusMessage) return;
+      if (!els.statusMessage && !els.readerStatusMessage) return;
       if (!message) {
         clearStatus();
         return;
       }
-      els.statusMessage.textContent = message;
-      els.statusMessage.className = `status-message show ${type}`;
+      updateStatusTarget(els.statusMessage, message, type);
+      updateStatusTarget(els.readerStatusMessage, message, type);
       window.clearTimeout(state.statusTimer);
       state.statusTimer = window.setTimeout(clearStatus, 4500);
     }
 
     function clearStatus() {
-      if (els.statusMessage) {
-        els.statusMessage.textContent = '';
-        els.statusMessage.className = 'status-message';
-      }
+      updateStatusTarget(els.statusMessage, '', 'info');
+      updateStatusTarget(els.readerStatusMessage, '', 'info');
     }
 
     function showLoader(message = 'Loading text...') {
@@ -2310,7 +2345,9 @@
     // ===== Flow Controls =====
     function toggleClearBtn() {
       if (!els.clearBtn || !els.pasteArea) return;
-      els.clearBtn.style.display = els.pasteArea.value.trim() ? 'block' : 'none';
+      const hasInputText = Boolean(els.pasteArea.value.trim());
+      const hasSavedText = Boolean(storage.get(STORAGE_KEYS.text, '').trim());
+      els.clearBtn.style.display = hasInputText || hasSavedText ? 'block' : 'none';
     }
 
     function clearText() {
@@ -2338,12 +2375,9 @@
     }
 
     function dismissContinue() {
-      state.currentText = '';
       if (els.continueBanner) els.continueBanner.classList.remove('show');
-      storage.remove(STORAGE_KEYS.text);
-      storage.set(STORAGE_KEYS.scroll, 0);
       toggleClearBtn();
-      showStatus('Local text restore dismissed.', 'success');
+      showStatus('Continue prompt dismissed. Saved text remains available.', 'info');
     }
 
     function loadTextFlow(text, isRestore = false) {
@@ -2384,7 +2418,11 @@
       if (els.wordCount) els.wordCount.classList.remove('force-hidden');
       if (els.focusRestore) els.focusRestore.classList.remove('show');
       if (els.sheetBackdrop) els.sheetBackdrop.classList.remove('show');
-      if (els.mobileFab) els.mobileFab.classList.remove('active');
+      if (els.mobileFab) {
+        els.mobileFab.classList.remove('active', 'reader-active');
+        els.mobileFab.setAttribute('aria-expanded', 'false');
+        els.mobileFab.setAttribute('aria-label', 'Toggle Reading Settings');
+      }
       
       state.focusMode = false;
       if (els.toolbar) setContainerFocusable(els.toolbar, false);
@@ -2402,7 +2440,12 @@
       if (els.wordCount) els.wordCount.classList.remove('force-hidden');
       if (els.focusRestore) els.focusRestore.classList.remove('show');
       if (els.sheetBackdrop) els.sheetBackdrop.classList.remove('show');
-      if (els.mobileFab) els.mobileFab.classList.remove('active');
+      if (els.mobileFab) {
+        els.mobileFab.classList.add('reader-active');
+        els.mobileFab.classList.remove('active');
+        els.mobileFab.setAttribute('aria-expanded', 'false');
+        els.mobileFab.setAttribute('aria-label', 'Toggle Reading Settings');
+      }
       
       state.focusMode = false;
       if (els.toolbar) setContainerFocusable(els.toolbar, true);
@@ -2437,18 +2480,22 @@
     function expandMobileSheet() {
       if (els.toolbar) els.toolbar.classList.add('expanded');
       if (els.sheetBackdrop) els.sheetBackdrop.classList.add('show');
+      if (els.toolbar) setContainerFocusable(els.toolbar, true);
       if (els.mobileFab) {
         els.mobileFab.classList.add('active');
         els.mobileFab.setAttribute('aria-label', 'Close Reading Settings');
+        els.mobileFab.setAttribute('aria-expanded', 'true');
       }
     }
 
     function collapseMobileSheet() {
       if (els.toolbar) els.toolbar.classList.remove('expanded');
       if (els.sheetBackdrop) els.sheetBackdrop.classList.remove('show');
+      if (els.toolbar) setContainerFocusable(els.toolbar, false);
       if (els.mobileFab) {
         els.mobileFab.classList.remove('active');
         els.mobileFab.setAttribute('aria-label', 'Toggle Reading Settings');
+        els.mobileFab.setAttribute('aria-expanded', 'false');
       }
       if (els.settingsDrawer) els.settingsDrawer.classList.remove('active');
       if (els.settingsBtn) {
@@ -2564,6 +2611,10 @@
       });
     }
 
+    function isMobileSheetLayout() {
+      return window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
+    }
+
     function toggleFocus() {
       if (!els.toolbar || !els.backBtn || !els.wordCount || !els.focusRestore) return;
       state.focusMode = !state.focusMode;
@@ -2590,6 +2641,12 @@
 
     function resetToolbarTimer() {
       if (state.focusMode || state.isEditing || !els.toolbar) return;
+
+      if (isMobileSheetLayout()) {
+        window.clearTimeout(state.toolbarTimer);
+        setContainerFocusable(els.toolbar, els.toolbar.classList.contains('expanded'));
+        return;
+      }
 
       els.toolbar.classList.remove('hidden-bar');
       setContainerFocusable(els.toolbar, true);
@@ -2717,6 +2774,18 @@
       element.addEventListener('mouseleave', () => {
         state.isGesture = false;
       });
+    }
+
+    function isInteractiveShortcutTarget(target) {
+      if (!(target instanceof Element)) return false;
+      return Boolean(target.closest('input, select, textarea, button, a, [contenteditable="true"], [role="button"], [role="slider"], [role="textbox"], [role="combobox"]'));
+    }
+
+    function canUseGlobalPresetShortcut(event) {
+      if (state.isEditing || !els.tocDialog || els.tocDialog.open) return false;
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return false;
+      if (event.target === els.presetWindow) return false;
+      return !isInteractiveShortcutTarget(event.target);
     }
 
     // ===== Safe DOM Event Bindings =====
@@ -2861,8 +2930,14 @@
           else if (state.focusMode) toggleFocus();
           else goBack();
         }
-        if (event.key === 'ArrowRight' && event.target !== els.presetWindow && els.tocDialog && !els.tocDialog.open && !state.isEditing) nextPreset();
-        if (event.key === 'ArrowLeft' && event.target !== els.presetWindow && els.tocDialog && !els.tocDialog.open && !state.isEditing) prevPreset();
+        if (event.key === 'ArrowRight' && canUseGlobalPresetShortcut(event)) {
+          event.preventDefault();
+          nextPreset();
+        }
+        if (event.key === 'ArrowLeft' && canUseGlobalPresetShortcut(event)) {
+          event.preventDefault();
+          prevPreset();
+        }
       });
 
       if (els.fullscreenBtn) els.fullscreenBtn.addEventListener('click', toggleFullscreen);
