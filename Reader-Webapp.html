@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Reader - Safe & Local Premium eReader</title>
+<title>Reader v1 - Safe & Local Premium eReader</title>
 <meta name="description" content="A state-of-the-art, fully client-side premium document reader. Processes PDFs, DOCX, Markdown, and TXT files entirely inside the browser with built-in TTS and custom typography presets.">
 <meta name="theme-color" content="#9a3524">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -687,6 +687,7 @@
     outline-offset: 8px;
     border-radius: 8px;
     background: rgba(154, 53, 36, 0.01);
+    white-space: pre-wrap;
     transition: outline 0.25s, background 0.25s;
   }
   .reader-content[contenteditable="true"]:focus {
@@ -1089,28 +1090,28 @@
       'dark', 'void', 'carbon', 'midnight', 'obsidian', 'dracula', 'nord', 'catppuccin', 'forest', 'ink', 'deep', 'onyx'
     ]);
 
-    // Dynamic library configurations with SRI hashes and safe fallback routes
+    // Dynamic library configurations with SRI hashes. Fail closed if verification fails.
     const LIBRARIES = {
       pdf: {
-        src: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.2.67/build/pdf.min.js',
-        integrity: 'sha256-n53wK2aZf1Wq+T4h0tN7x94/kYt+DqXv9V+QJ42G+pM=',
+        src: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
+        integrity: 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=',
         check: () => window.pdfjsLib,
         onLoad: () => {
           if (window.pdfjsLib) {
-            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.2.67/build/pdf.worker.min.js';
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
           }
         }
       },
       mammoth: {
         src: 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js',
-        integrity: 'sha512-V/H2i236y6Q1jT45X48k2dM+sJp9X0ZzZ8gYd5X8Z8qYw7yXwXkX8XwXkX8XwXkX8XwXkX8XwXkX8XwXkX8Xw==',
+        integrity: 'sha256-WW71IjnlLY7jzuELLuSnJZar+QDQ5PRoWT+Vbp8YCbA=',
         check: () => window.mammoth
       }
     };
 
     const loadedLibraries = new Map();
 
-    // Promise-based dynamic loader with Subresource Integrity and secondary fallback loading
+    // Promise-based dynamic loader with Subresource Integrity
     function loadLibrary(name) {
       if (loadedLibraries.has(name)) {
         return loadedLibraries.get(name);
@@ -1125,11 +1126,11 @@
           return;
         }
 
-        function createScript(useIntegrity = true) {
+        function createScript() {
           const script = document.createElement('script');
           script.src = lib.src;
           script.crossOrigin = 'anonymous';
-          if (useIntegrity && lib.integrity) {
+          if (lib.integrity) {
             script.integrity = lib.integrity;
           }
           script.onload = () => {
@@ -1145,18 +1146,12 @@
             }
           };
           script.onerror = () => {
-            if (useIntegrity && lib.integrity) {
-              console.warn(`Failed to load ${name} with SRI. Retrying without integrity...`);
-              document.head.removeChild(script);
-              createScript(false);
-            } else {
-              reject(new Error(`Failed to load library ${name} from ${lib.src}`));
-            }
+            reject(new Error(`Failed to load verified library ${name}. Check your connection or update the integrity hash.`));
           };
           document.head.appendChild(script);
         }
 
-        createScript(true);
+        createScript();
       });
 
       loadedLibraries.set(name, promise);
@@ -1253,6 +1248,7 @@
     let ttsHeartbeatInterval = null;
     let debounceSaveTimer = null;
     let lastActiveElement = null;
+    let activeRenderId = 0;
 
     // ===== Storage with Quota Handling & Robust Exception Trapping =====
     const storage = {
@@ -1623,10 +1619,12 @@
     // High performance asynchronous chunked parser. Prevents layout thrashing on huge documents.
     function renderTextAsync(text, onComplete) {
       if (!els.readerContent) return;
+      const renderId = ++activeRenderId;
       showLoader('Preparing reader...');
       els.readerContent.textContent = '';
 
       setTimeout(() => {
+        if (renderId !== activeRenderId) return;
         const lines = text.split('\n');
         const htmlParts = [];
         let index = 0;
@@ -1642,7 +1640,7 @@
         }
 
         function flushParts() {
-          if (!htmlParts.length || !els.readerContent) return;
+          if (renderId !== activeRenderId || !htmlParts.length || !els.readerContent) return;
           els.readerContent.insertAdjacentHTML('beforeend', htmlParts.join(''));
           htmlParts.length = 0;
         }
@@ -1743,13 +1741,16 @@
 
         // Dynamic yielding block iterator using requestAnimationFrame
         function processChunk() {
+          if (renderId !== activeRenderId) return;
           try {
             const chunkEnd = Math.min(index + 500, lines.length);
             for (; index < chunkEnd; index++) {
+              if (renderId !== activeRenderId) return;
               processLine(lines[index]);
             }
 
             flushParts();
+            if (renderId !== activeRenderId) return;
 
             if (index < lines.length) {
               window.requestAnimationFrame(processChunk);
@@ -1761,10 +1762,12 @@
               pushHtml(`<pre><code>${escapeHtml(codeBuffer.trimEnd())}</code></pre>`);
             }
             flushParts();
+            if (renderId !== activeRenderId) return;
             applyTextColor(state.currentTextColor);
             hideLoader();
             if (onComplete) onComplete();
           } catch (err) {
+            if (renderId !== activeRenderId) return;
             hideLoader();
             showStatus(`Could not render this text safely: ${formatError(err)}`, 'error');
           }
@@ -2798,7 +2801,8 @@
       }, { passive: true });
 
       document.addEventListener('scroll', () => {
-        if (els.readerView && els.readerView.classList.contains('active')) resetToolbarTimer();
+        if (!els.readerView || !els.readerView.classList.contains('active')) return;
+        if (els.toolbar && els.toolbar.contains(document.activeElement)) resetToolbarTimer();
       }, { passive: true });
 
       document.addEventListener('keydown', event => {
