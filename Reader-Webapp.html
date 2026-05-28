@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Reader v3 - Safe & Local Premium eReader</title>
+<title>Reader v4 - Safe & Local Premium eReader</title>
 <meta name="description" content="A state-of-the-art, fully client-side premium document reader. Processes PDFs, DOCX, Markdown, and TXT files entirely inside the browser with built-in TTS and custom typography presets.">
 <meta name="theme-color" content="#9a3524">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -966,7 +966,7 @@
     </div>
     <div class="brand">Reader</div>
     <div class="subtitle">Paste your text or drop a file anywhere here</div>
-    <textarea class="paste-area" id="pasteArea" placeholder="Paste text here..."></textarea>
+    <textarea class="paste-area" id="pasteArea" aria-label="Text to read" placeholder="Paste text here..."></textarea>
     <div class="controls-row">
       <button class="btn btn-primary" id="readBtn" type="button">Read Text</button>
       <label class="file-input-wrap btn btn-secondary" for="fileInput">
@@ -1065,7 +1065,7 @@
           <span class="settings-label">Parsing</span>
           <div class="settings-row">
             <label class="control-item checkbox-control">
-              <input type="checkbox" id="smartHeadingsInput" checked>
+              <input type="checkbox" id="smartHeadingsInput" aria-label="Smart Headings" checked>
               <span>Smart Headings</span>
             </label>
           </div>
@@ -1073,11 +1073,11 @@
       </div>
 
       <div class="preset-carousel" id="presetCarousel">
-        <button class="preset-arrow" id="arrowLeft" aria-label="Previous Preset">&#10094;</button>
+        <button class="preset-arrow" id="arrowLeft" type="button" aria-label="Previous Preset">&#10094;</button>
         <div class="preset-window" id="presetWindow" tabindex="0" role="region" aria-label="Reading preset carousel">
           <div class="preset-track snapping" id="presetTrack"></div>
         </div>
-        <button class="preset-arrow" id="arrowRight" aria-label="Next Preset">&#10095;</button>
+        <button class="preset-arrow" id="arrowRight" type="button" aria-label="Next Preset">&#10095;</button>
       </div>
       <div class="preset-dots" id="presetDots"></div>
 
@@ -1104,9 +1104,9 @@
     <div class="loader-text">Loading text&#8230;</div>
   </div>
   
-  <dialog id="tocDialog" class="modal">
+  <dialog id="tocDialog" class="modal" aria-labelledby="tocTitle">
     <div class="modal-header">
-      <h3>Table of Contents</h3>
+      <h3 id="tocTitle">Table of Contents</h3>
       <button id="closeTocBtn" type="button" aria-label="Close Table of Contents">&times;</button>
     </div>
     <div class="modal-body" id="tocBody"></div>
@@ -1392,6 +1392,16 @@
 
     function formatError(err) {
       return err && err.message ? err.message : 'Unknown error';
+    }
+
+    function clampNumber(value, fallback, min, max) {
+      const parsed = Number.parseFloat(value);
+      if (!Number.isFinite(parsed)) return fallback;
+      return Math.min(Math.max(parsed, min), max);
+    }
+
+    function getElementTarget(target) {
+      return target instanceof Element ? target : null;
     }
 
     // ===== Presets and Custom Typography Colors =====
@@ -1882,7 +1892,7 @@
 
     function updateRulerPosition(e) {
       if (!isRulerActive || !els.readingRuler || !els.readerContent) return;
-      const target = e.target;
+      const target = getElementTarget(e.target);
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
       
       if (target && els.readerContent.contains(target) && 
@@ -2012,7 +2022,7 @@
       const sentence = ttsQueue.shift();
       ttsUtterance = new SpeechSynthesisUtterance(sentence);
       
-      const rate = parseFloat(els.voiceRateInput ? els.voiceRateInput.value : '1.0') || 1.0;
+      const rate = clampNumber(els.voiceRateInput ? els.voiceRateInput.value : '1.0', 1.0, 0.5, 2.5);
       ttsUtterance.rate = rate;
 
       if (els.voiceSelect && els.voiceSelect.value) {
@@ -2101,25 +2111,46 @@
 
     function toggleFullscreen() {
       try {
-        if (!document.fullscreenElement) {
-          if (document.documentElement.requestFullscreen) {
-             document.documentElement.requestFullscreen();
-          } else if (document.documentElement.webkitRequestFullscreen) {
-             document.documentElement.webkitRequestFullscreen();
-          } else if (document.documentElement.msRequestFullscreen) {
-             document.documentElement.msRequestFullscreen();
+        if (!getFullscreenElement()) {
+          const requestFullscreen = document.documentElement.requestFullscreen ||
+            document.documentElement.webkitRequestFullscreen ||
+            document.documentElement.msRequestFullscreen;
+          if (!requestFullscreen) {
+            showStatus('Fullscreen mode is not supported on this device.', 'error');
+            return;
           }
+          handleFullscreenPromise(requestFullscreen.call(document.documentElement));
         } else {
-          if (document.exitFullscreen) {
-            document.exitFullscreen();
-          } else if (document.webkitExitFullscreen) {
-            document.webkitExitFullscreen();
-          } else if (document.msExitFullscreen) {
-            document.msExitFullscreen();
+          const exitFullscreen = document.exitFullscreen ||
+            document.webkitExitFullscreen ||
+            document.msExitFullscreen;
+          if (!exitFullscreen) {
+            showStatus('Fullscreen exit is not supported on this device.', 'error');
+            return;
           }
+          handleFullscreenPromise(exitFullscreen.call(document));
         }
       } catch (err) {
          showStatus('Fullscreen mode not permitted on this device.', 'error');
+      }
+    }
+
+    function getFullscreenElement() {
+      return document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.msFullscreenElement ||
+        null;
+    }
+
+    function handleFullscreenPromise(result) {
+      if (result && typeof result.catch === 'function') {
+        result.catch(() => showStatus('Fullscreen mode not permitted on this device.', 'error'));
+      }
+    }
+
+    function updateFullscreenButton() {
+      if (els.fullscreenBtn) {
+        els.fullscreenBtn.classList.toggle('active', Boolean(getFullscreenElement()));
       }
     }
 
@@ -2582,9 +2613,9 @@
 
     function updateMarginStyle(value) {
       if (!els.readerContent) return;
-      let padding = value;
+      let padding = clampNumber(value, 24, 12, 80);
       if (window.innerWidth <= 640) {
-        padding = Math.min(value, 24); // Safe mobile margins clamp
+        padding = Math.min(padding, 24); // Safe mobile margins clamp
       }
       els.readerContent.style.paddingLeft = `${padding}px`;
       els.readerContent.style.paddingRight = `${padding}px`;
@@ -2719,7 +2750,8 @@
       if (!element) return;
       element.addEventListener('touchstart', event => {
         if (event.touches.length !== 1) return;
-        if (event.target.closest('pre') || state.isEditing) return; 
+        const target = getElementTarget(event.target);
+        if ((target && target.closest('pre')) || state.isEditing) return;
         
         state.gestureStartX = event.touches[0].screenX;
         state.gestureStartY = event.touches[0].screenY;
@@ -2749,7 +2781,8 @@
       }, { passive: true });
 
       element.addEventListener('mousedown', event => {
-        if (event.target.closest('pre') || state.isEditing) return; 
+        const target = getElementTarget(event.target);
+        if ((target && target.closest('pre')) || state.isEditing) return;
 
         state.gestureStartX = event.clientX;
         state.gestureStartY = event.clientY;
@@ -2777,8 +2810,9 @@
     }
 
     function isInteractiveShortcutTarget(target) {
-      if (!(target instanceof Element)) return false;
-      return Boolean(target.closest('input, select, textarea, button, a, [contenteditable="true"], [role="button"], [role="slider"], [role="textbox"], [role="combobox"]'));
+      const element = getElementTarget(target);
+      if (!element) return false;
+      return Boolean(element.closest('input, select, textarea, button, a, [contenteditable="true"], [role="button"], [role="slider"], [role="textbox"], [role="combobox"]'));
     }
 
     function canUseGlobalPresetShortcut(event) {
@@ -2817,7 +2851,8 @@
         els.presetWindow.addEventListener('mousedown', event => startCarouselDrag(event.clientX));
         els.presetWindow.addEventListener('click', event => {
           if (state.isDraggingCarousel || Math.abs(state.dragCurrentX - state.dragStartX) > 5) return;
-          const card = event.target.closest('.preset-card');
+          const target = getElementTarget(event.target);
+          const card = target ? target.closest('.preset-card') : null;
           if (!card) return;
           applyPreset(card.getAttribute('data-index'));
         });
@@ -2946,10 +2981,13 @@
       if (els.downloadBtn) els.downloadBtn.addEventListener('click', downloadText);
       
       document.addEventListener('fullscreenchange', () => {
-         if(els.fullscreenBtn) els.fullscreenBtn.classList.toggle('active', !!document.fullscreenElement);
+         updateFullscreenButton();
       });
       document.addEventListener('webkitfullscreenchange', () => {
-         if(els.fullscreenBtn) els.fullscreenBtn.classList.toggle('active', !!document.fullscreenElement);
+         updateFullscreenButton();
+      });
+      document.addEventListener('msfullscreenchange', () => {
+         updateFullscreenButton();
       });
 
       // Dialog Events and Focus Restoration controls
@@ -2977,7 +3015,7 @@
         els.readerContent.addEventListener('touchmove', (e) => {
           if (!isRulerActive || e.touches.length !== 1 || !els.readingRuler) return;
           const touch = e.touches[0];
-          const target = document.elementFromPoint(touch.clientX, touch.clientY);
+          const target = getElementTarget(document.elementFromPoint(touch.clientX, touch.clientY));
           if (target && els.readerContent.contains(target)) {
             const textContainer = target.closest('p, li, h1, h2, h3, blockquote') || target;
             const rect = textContainer.getBoundingClientRect();
@@ -2994,7 +3032,8 @@
       // Sliders Typography Range Hooks
       if (els.lineHeightInput) {
         els.lineHeightInput.addEventListener('input', () => {
-          const val = els.lineHeightInput.value;
+          const val = clampNumber(els.lineHeightInput.value, 1.85, 1.4, 2.6);
+          els.lineHeightInput.value = val;
           if (els.readerContent) els.readerContent.style.lineHeight = val;
           storage.set('reader_lineheight', val);
         });
@@ -3002,7 +3041,8 @@
 
       if (els.letterSpacingInput) {
         els.letterSpacingInput.addEventListener('input', () => {
-          const val = els.letterSpacingInput.value;
+          const val = clampNumber(els.letterSpacingInput.value, -0.015, -0.03, 0.15);
+          els.letterSpacingInput.value = val;
           if (els.readerContent) els.readerContent.style.letterSpacing = `${val}em`;
           storage.set('reader_letterspacing', val);
         });
@@ -3010,7 +3050,8 @@
 
       if (els.marginInput) {
         els.marginInput.addEventListener('input', () => {
-          const val = parseFloat(els.marginInput.value);
+          const val = clampNumber(els.marginInput.value, 24, 12, 80);
+          els.marginInput.value = val;
           updateMarginStyle(val);
           storage.set('reader_margin', val);
         });
@@ -3040,7 +3081,8 @@
 
       if (els.voiceRateInput && els.voiceRateVal) {
         els.voiceRateInput.addEventListener('input', () => {
-          const val = parseFloat(els.voiceRateInput.value);
+          const val = clampNumber(els.voiceRateInput.value, 1.0, 0.5, 2.5);
+          els.voiceRateInput.value = val;
           els.voiceRateVal.textContent = `${val.toFixed(1)}x`;
           storage.set('reader_voice_rate', val);
           announceLive(`Speech speed changed to ${val.toFixed(1)}x.`);
@@ -3055,7 +3097,8 @@
 
       if (els.scrollSpeedInput && els.scrollSpeedVal) {
         els.scrollSpeedInput.addEventListener('input', () => {
-          const val = parseFloat(els.scrollSpeedInput.value);
+          const val = clampNumber(els.scrollSpeedInput.value, 0.04, 0.01, 0.2);
+          els.scrollSpeedInput.value = val;
           autoScrollSpeed = val;
           els.scrollSpeedVal.textContent = `${(val / 0.04).toFixed(1)}x`;
           storage.set('reader_scroll_speed', val);
@@ -3107,27 +3150,27 @@
       if (els.toolbar) setContainerFocusable(els.toolbar, false);
 
       // Load saved typography sliders
-      const savedLineHeight = storage.get('reader_lineheight', '1.85');
+      const savedLineHeight = clampNumber(storage.get('reader_lineheight', '1.85'), 1.85, 1.4, 2.6);
       if (els.lineHeightInput) els.lineHeightInput.value = savedLineHeight;
       if (els.readerContent) els.readerContent.style.lineHeight = savedLineHeight;
 
-      const savedLetterSpacing = storage.get('reader_letterspacing', '-0.015');
+      const savedLetterSpacing = clampNumber(storage.get('reader_letterspacing', '-0.015'), -0.015, -0.03, 0.15);
       if (els.letterSpacingInput) els.letterSpacingInput.value = savedLetterSpacing;
       if (els.readerContent) els.readerContent.style.letterSpacing = `${savedLetterSpacing}em`;
 
-      const savedMargin = storage.get('reader_margin', '24');
+      const savedMargin = clampNumber(storage.get('reader_margin', '24'), 24, 12, 80);
       if (els.marginInput) els.marginInput.value = savedMargin;
-      updateMarginStyle(parseFloat(savedMargin));
+      updateMarginStyle(savedMargin);
 
       // Load saved TTS speed
-      const savedVoiceRate = storage.get('reader_voice_rate', '1.0');
+      const savedVoiceRate = clampNumber(storage.get('reader_voice_rate', '1.0'), 1.0, 0.5, 2.5);
       if (els.voiceRateInput) els.voiceRateInput.value = savedVoiceRate;
-      if (els.voiceRateVal) els.voiceRateVal.textContent = `${parseFloat(savedVoiceRate).toFixed(1)}x`;
+      if (els.voiceRateVal) els.voiceRateVal.textContent = `${savedVoiceRate.toFixed(1)}x`;
 
       // Load saved Auto-Scroll speed
-      const savedScrollSpeed = storage.get('reader_scroll_speed', '0.04');
+      const savedScrollSpeed = clampNumber(storage.get('reader_scroll_speed', '0.04'), 0.04, 0.01, 0.2);
       if (els.scrollSpeedInput) els.scrollSpeedInput.value = savedScrollSpeed;
-      autoScrollSpeed = parseFloat(savedScrollSpeed);
+      autoScrollSpeed = savedScrollSpeed;
       if (els.scrollSpeedVal) els.scrollSpeedVal.textContent = `${(autoScrollSpeed / 0.04).toFixed(1)}x`;
 
       // Initialize speech synthesizers
