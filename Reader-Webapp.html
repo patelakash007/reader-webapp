@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Reader v1 - Safe & Local Premium eReader</title>
+<title>Reader v2 - Safe & Local Premium eReader</title>
 <meta name="description" content="A state-of-the-art, fully client-side premium document reader. Processes PDFs, DOCX, Markdown, and TXT files entirely inside the browser with built-in TTS and custom typography presets.">
 <meta name="theme-color" content="#9a3524">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -29,6 +29,7 @@
 
   .theme-dark { --bg: #1a1a1a; --card: #2a2520; --text: #f5f0e8; --text2: #b0a898; --accent: #9a3524; --ui-positive: #4caf50; --toolbar-bg: rgba(40,35,30,0.95); --reader-text-color: #f5f0e8; }
   .theme-paper { --bg: #faf8f3; --card: #f0ece4; --text: #2c1810; --text2: #6b5b50; --accent: #c45c26; --ui-positive: #2e7d32; --toolbar-bg: rgba(240,236,228,0.95); --reader-text-color: #2c1810; }
+  .theme-cream { --bg: #fbfaf8; --card: #f2efe9; --text: #1c1b1a; --text2: #6e6a62; --accent: #9a3524; --ui-positive: #347a46; --toolbar-bg: rgba(251,250,248,0.95); --reader-text-color: #1c1b1a; }
   .theme-sage { --bg: #e8ebe4; --card: #dde3d8; --text: #1a2e1a; --text2: #304830; --accent: #234931; --ui-positive: #3a7d44; --toolbar-bg: rgba(221,227,216,0.95); --reader-text-color: #1a2e1a; }
   .theme-ink { --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --text2: #94a3b8; --accent: #38bdf8; --ui-positive: #4ade80; --toolbar-bg: rgba(30,41,59,0.95); --reader-text-color: #e2e8f0; }
   .theme-rose { --bg: #fdf2f4; --card: #fae8ec; --text: #3d0f1a; --text2: #6b2e3b; --accent: #b91c4a; --ui-positive: #2e7d32; --toolbar-bg: rgba(250,232,236,0.95); --reader-text-color: #3d0f1a; }
@@ -82,7 +83,7 @@
     position: fixed;
     top: 0; left: 0; width: 100vw; height: 100vh;
     pointer-events: none;
-    z-index: 9999;
+    z-index: 100;
     opacity: 0.22;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
   }
@@ -90,8 +91,8 @@
   /* Minimal Custom Scrollbar */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgba(154, 53, 36, 0.2); border-radius: 4px; }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(154, 53, 36, 0.45); }
+  ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--accent) 22%, transparent); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--accent) 45%, transparent); }
   
   ::selection { background: var(--accent); color: #fff; }
 
@@ -577,7 +578,7 @@
   }
   .modal-body::-webkit-scrollbar { width: 6px; }
   .modal-body::-webkit-scrollbar-track { background: transparent; }
-  .modal-body::-webkit-scrollbar-thumb { background: rgba(154, 53, 36, 0.2); border-radius: 4px; }
+  .modal-body::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--accent) 22%, transparent); border-radius: 4px; }
   
   .toc-item {
     display: block; padding: 12px 0; color: var(--text);
@@ -673,6 +674,18 @@
     cursor: pointer;
     max-width: 100%;
     min-height: 38px;
+  }
+  .checkbox-control {
+    flex-direction: row;
+    align-items: center;
+    min-height: 38px;
+    gap: 10px;
+  }
+  .checkbox-control input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
   }
   .value-display {
     font-size: 11px;
@@ -944,7 +957,7 @@
     <div class="note-text">Note: Multi-column PDFs and complex DOCX layouts may occasionally extract text out of order due to browser limitations.</div>
   </main>
 
-  <main id="readerView">
+  <section id="readerView" aria-label="Reader view">
     <button class="back-btn" id="backBtn" type="button" aria-label="Go Back">&#8592;</button>
 
     <div id="toolbar">
@@ -989,7 +1002,7 @@
             </div>
           </div>
         </div>
-        
+
         <div class="settings-group">
           <span class="settings-label">Speech (TTS)</span>
           <div class="settings-row">
@@ -1006,7 +1019,7 @@
             </div>
           </div>
         </div>
-        
+
         <div class="settings-group">
           <span class="settings-label">Auto-Scroll</span>
           <div class="settings-row">
@@ -1017,6 +1030,16 @@
               </div>
               <input type="range" id="scrollSpeedInput" min="0.01" max="0.2" step="0.01" value="0.04">
             </div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <span class="settings-label">Parsing</span>
+          <div class="settings-row">
+            <label class="control-item checkbox-control">
+              <input type="checkbox" id="smartHeadingsInput" checked>
+              <span>Smart Headings</span>
+            </label>
           </div>
         </div>
       </div>
@@ -1040,7 +1063,7 @@
     <article class="reader-content fs-medium" id="readerContent"></article>
     <div class="wordcount" id="wordCount"></div>
     <button id="focusRestore" type="button" title="Show UI" aria-label="Show UI">&#8853;</button>
-  </main>
+  </section>
 
   <div id="gestureHint">
     <div class="gesture-hint-text" id="gestureHintText">Swipe left / right</div>
@@ -1074,7 +1097,8 @@
       presetIndex: 'reader_preset_index',
       font: 'reader_font',
       theme: 'reader_theme',
-      textColor: 'reader_textcolor'
+      textColor: 'reader_textcolor',
+      smartHeadings: 'reader_smart_headings'
     };
 
     const VALID_SIZES = new Set(['small', 'medium', 'large', 'xl']);
@@ -1085,7 +1109,8 @@
     ]);
 
     const VALID_THEMES = new Set([
-      'claude', 'zen', 'stark', 'paper', 'cream', 'notion', 'kindle', 'apple', 'github', 'solarized', 
+      'claude', 'zen', 'stark', 'paper', 'cream', 'notion', 'kindle', 'apple', 'github', 'solarized',
+      'slate',
       'rose', 'sand', 'amber', 'newspaper', 'creamy', 'ivory', 'mint', 'peach', 'lavender',
       'dark', 'void', 'carbon', 'midnight', 'obsidian', 'dracula', 'nord', 'catppuccin', 'forest', 'ink', 'deep', 'onyx'
     ]);
@@ -1155,6 +1180,7 @@
       });
 
       loadedLibraries.set(name, promise);
+      promise.catch(() => loadedLibraries.delete(name));
       return promise;
     }
 
@@ -1208,6 +1234,7 @@
       lineHeightInput: document.getElementById('lineHeightInput'),
       letterSpacingInput: document.getElementById('letterSpacingInput'),
       marginInput: document.getElementById('marginInput'),
+      smartHeadingsInput: document.getElementById('smartHeadingsInput'),
       mobileFab: document.getElementById('mobileFab'),
       sheetBackdrop: document.getElementById('sheetBackdrop'),
       bottomSheetHandle: document.getElementById('bottomSheetHandle'),
@@ -1234,7 +1261,9 @@
       gestureStartY: 0,
       gestureStartTime: 0,
       isGesture: false,
-      isEditing: false
+      isEditing: false,
+      smartHeadings: true,
+      wordCountTimer: null
     };
 
     let isAutoScrolling = false;
@@ -1415,6 +1444,10 @@
       const link = document.createElement('link');
       link.rel = 'stylesheet';
       link.href = `https://fonts.googleapis.com/css2?${cfg.url}&display=swap`;
+      link.onerror = () => {
+        loadedFonts.delete(fontKey);
+        showStatus(`Could not load the ${fontKey} font. Using the browser fallback.`, 'info');
+      };
       document.head.appendChild(link);
       loadedFonts.add(fontKey);
     }
@@ -1535,7 +1568,10 @@
 
     function setTheme(theme, save) {
       if (!VALID_THEMES.has(theme)) theme = 'claude';
-      document.body.className = theme === 'cream' ? '' : `theme-${theme}`;
+      Array.from(document.body.classList)
+        .filter(className => className.startsWith('theme-'))
+        .forEach(className => document.body.classList.remove(className));
+      document.body.classList.add(`theme-${theme}`);
       if (save !== false) storage.set(STORAGE_KEYS.theme, theme);
     }
 
@@ -1702,7 +1738,7 @@
             return;
           }
 
-          if (wasPreviousLineEmpty && /^[A-Z][A-Z0-9\s]{2,40}[A-Z0-9]$/.test(trimmed) && trimmed.length < 50) {
+          if (state.smartHeadings && wasPreviousLineEmpty && /^[A-Z][A-Z0-9\s]{2,40}[A-Z0-9]$/.test(trimmed) && trimmed.length < 50) {
             flushList();
             pushHtml(`<h2 id="heading-${index}">${escapeHtml(trimmed)}</h2>`);
             wasPreviousLineEmpty = false;
@@ -1779,11 +1815,16 @@
 
     function updateWordCount() {
       if (!els.readerContent || !els.wordCount) return;
-      const text = els.readerContent.innerText || '';
+      const text = els.readerContent.textContent || '';
       const words = text.trim().split(/\s+/).filter(word => word.length > 0).length;
       const minutes = Math.ceil(words / 238);
       const timeString = words < 238 ? '< 1 min read' : `~${minutes} min read`;
       els.wordCount.textContent = `${words.toLocaleString()} words \u00b7 ${timeString}`;
+    }
+
+    function scheduleWordCountUpdate() {
+      window.clearTimeout(state.wordCountTimer);
+      state.wordCountTimer = window.setTimeout(updateWordCount, 0);
     }
 
     // ===== Features (Ruler, AutoScroll, Fullscreen, Download, TOC) =====
@@ -1838,7 +1879,8 @@
          scrollAccumulator -= pixelsToScroll;
       }
 
-      if (Math.ceil(window.innerHeight + window.scrollY) >= document.documentElement.scrollHeight) {
+      const distanceToBottom = document.documentElement.scrollHeight - window.scrollY - window.innerHeight;
+      if (distanceToBottom < 1) {
         toggleAutoScroll();
       } else {
         requestAnimationFrame(autoScrollLoop);
@@ -2194,9 +2236,14 @@
 
     async function extractDocxText(arrayBuffer) {
       showLoader('Loading DOCX parser module...');
-      const mammothLib = await loadLibrary('mammoth');
+      let mammothLib;
+      try {
+        mammothLib = await loadLibrary('mammoth');
+      } catch (err) {
+        throw new Error(`DOCX parser library failed to load: ${formatError(err)} Try checking your connection or exporting this file as TXT/Markdown.`);
+      }
       if (!mammothLib) {
-        throw new Error('DOCX processing library could not be loaded. Try Markdown or TXT documents instead.');
+        throw new Error('DOCX parser library is unavailable. Try checking your connection or exporting this file as TXT/Markdown.');
       }
 
       const result = await mammothLib.extractRawText({ arrayBuffer });
@@ -2291,9 +2338,11 @@
     }
 
     function dismissContinue() {
+      state.currentText = '';
       if (els.continueBanner) els.continueBanner.classList.remove('show');
       storage.remove(STORAGE_KEYS.text);
       storage.set(STORAGE_KEYS.scroll, 0);
+      toggleClearBtn();
       showStatus('Local text restore dismissed.', 'success');
     }
 
@@ -2357,7 +2406,7 @@
       
       state.focusMode = false;
       if (els.toolbar) setContainerFocusable(els.toolbar, true);
-      updateWordCount();
+      scheduleWordCountUpdate();
       resetToolbarTimer();
 
       setTimeout(() => {
@@ -2454,7 +2503,7 @@
 
       // Re-compile raw markdown back into safe HTML blocks
       renderTextAsync(state.currentText, () => {
-        updateWordCount();
+        scheduleWordCountUpdate();
         announceLive('Changes saved. Reading mode restored.');
         showStatus('All edits successfully saved to memory.', 'success');
       });
@@ -2891,6 +2940,22 @@
           storage.set('reader_margin', val);
         });
       }
+
+      if (els.smartHeadingsInput) {
+        els.smartHeadingsInput.addEventListener('change', () => {
+          state.smartHeadings = els.smartHeadingsInput.checked;
+          storage.set(STORAGE_KEYS.smartHeadings, state.smartHeadings ? 'true' : 'false');
+          announceLive(`Smart headings ${state.smartHeadings ? 'enabled' : 'disabled'}.`);
+
+          if (state.currentText && els.readerView && els.readerView.classList.contains('active') && !state.isEditing) {
+            const currentScroll = window.scrollY;
+            renderTextAsync(state.currentText, () => {
+              scheduleWordCountUpdate();
+              window.scrollTo(0, currentScroll);
+            });
+          }
+        });
+      }
       
       window.addEventListener('resize', () => {
         if (els.marginInput) {
@@ -2940,7 +3005,7 @@
             const text = els.readerContent.innerText || '';
             state.currentText = text;
             storage.set(STORAGE_KEYS.text, state.currentText);
-            updateWordCount();
+            scheduleWordCountUpdate();
             showStatus('Edits autosaved locally.', 'success');
           }, 1000);
         });
@@ -2952,6 +3017,9 @@
 
       const savedText = storage.get(STORAGE_KEYS.text, '');
       if (savedText.trim() && els.continueBanner) els.continueBanner.classList.add('show');
+
+      state.smartHeadings = storage.get(STORAGE_KEYS.smartHeadings, 'true') !== 'false';
+      if (els.smartHeadingsInput) els.smartHeadingsInput.checked = state.smartHeadings;
 
       const savedMode = storage.get(STORAGE_KEYS.mode, '');
       const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
