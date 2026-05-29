@@ -19,8 +19,9 @@ https://patelakash007.github.io/reader-webapp/
 - Typography presets for comfortable long-form reading
 - Text-to-speech support for listening while reading
 - Local-first design: files are processed in the browser
+- PDF/DOCX parser libraries are bundled locally
 - Mobile-friendly layout for phone reading
-- Single-page app design with `index.html` as the main app file
+- Single-page app split into `index.html`, `style.css`, and `script.js`
 
 ## Why this exists
 
@@ -30,9 +31,16 @@ Modern articles and long AI answers can be hard to read because of ads, bad spac
 
 ```text
 reader-webapp/
-├── index.html      # Main Reader Webapp
-├── README.md       # Project overview and usage notes
-└── LICENSE         # MIT License
+├── index.html
+├── style.css
+├── script.js
+├── vendor/
+│   ├── pdf.min.js
+│   ├── pdf.worker.min.js
+│   └── mammoth.browser.min.js
+├── README.md
+├── LICENSE
+└── .gitignore
 ```
 
 ## How to use
@@ -66,7 +74,9 @@ http://localhost:8080/
 
 ## Privacy notes
 
-Reader Webapp is designed to keep reading local-first. Documents are opened and processed inside the browser where possible. Avoid pasting sensitive private data into any online-hosted version unless you fully trust the environment and browser session.
+Reader Webapp is designed to keep reading local-first. Documents are opened and processed inside the browser where possible, and PDF/DOCX parser libraries are bundled locally in this repo.
+
+Local-first does not mean zero network requests when the app is hosted online. Google Fonts may still be requested unless fonts are later vendored. Avoid pasting sensitive private data into any online-hosted version unless you fully trust the environment and browser session.
 
 ## Development workflow
 
@@ -82,7 +92,7 @@ Example:
 ```bash
 git checkout -b feature/better-reading-mode
 # edit files
-git add index.html README.md
+git add index.html style.css script.js README.md .gitignore vendor/
 git commit -m "feat: improve reading mode"
 git push -u origin feature/better-reading-mode
 ```
