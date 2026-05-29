@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#9a3524">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; worker-src 'self' blob: https://cdn.jsdelivr.net; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; object-src 'none'; base-uri 'self'">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E&#128214;%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -979,7 +980,7 @@
     
     <!-- Polished Local Processing Notice -->
     <div class="privacy-banner">
-      🔒 <strong>Local & Private:</strong> Your text never leaves your device. All files (PDFs, DOCX, TXT) are processed entirely in your browser. No server uploads are used by this app. Cleared data is permanently removed from local storage.
+      🔒 <strong>Local processing:</strong> Document content is processed in your browser and is not uploaded by this app. The app may request Google Fonts and CDN libraries, including PDF.js and its worker from jsDelivr plus Mammoth from CDNJS. Cleared data is removed from browser storage when storage is available.
     </div>
     
     <div class="note-text">Note: Multi-column PDFs and complex DOCX layouts may occasionally extract text out of order due to browser limitations.</div>
@@ -1351,6 +1352,14 @@
         return Number.isFinite(value) ? value : fallback;
       }
     };
+
+    function persistCurrentText() {
+      return storage.set(STORAGE_KEYS.text, state.currentText);
+    }
+
+    function showDocumentStorageWarning(prefix = 'Save failed') {
+      showStatus(`${prefix}. Your document remains open in this session, but it could not be saved to browser storage.`, 'error');
+    }
 
     // ===== Status & Loader UI Functions =====
     function updateStatusTarget(target, message, type) {
@@ -2384,11 +2393,15 @@
     function clearText() {
       state.currentText = '';
       if (els.pasteArea) els.pasteArea.value = '';
-      storage.remove(STORAGE_KEYS.text);
-      storage.set(STORAGE_KEYS.scroll, 0);
+      const removedText = storage.remove(STORAGE_KEYS.text);
+      const resetScroll = storage.set(STORAGE_KEYS.scroll, 0);
       if (els.continueBanner) els.continueBanner.classList.remove('show');
       toggleClearBtn();
-      showStatus('Saved text cleared successfully.', 'success');
+      if (removedText && resetScroll) {
+        showStatus('Saved text cleared successfully.', 'success');
+      } else {
+        showStatus('Text cleared from this session, but browser storage could not be fully updated.', 'error');
+      }
     }
 
     function restoreLast() {
@@ -2419,8 +2432,9 @@
 
       clearStatus();
       state.currentText = text;
-      storage.set(STORAGE_KEYS.text, state.currentText);
+      const textSaved = persistCurrentText();
       if (!isRestore) storage.set(STORAGE_KEYS.scroll, 0);
+      if (!textSaved) showDocumentStorageWarning('Document loaded, but save failed');
       renderTextAsync(state.currentText, enterReader);
     }
 
@@ -2577,13 +2591,18 @@
 
       const editedText = els.readerContent.innerText || '';
       state.currentText = editedText;
-      storage.set(STORAGE_KEYS.text, state.currentText);
+      const textSaved = persistCurrentText();
 
       // Re-compile raw markdown back into safe HTML blocks
       renderTextAsync(state.currentText, () => {
         scheduleWordCountUpdate();
-        announceLive('Changes saved. Reading mode restored.');
-        showStatus('All edits successfully saved to memory.', 'success');
+        if (textSaved) {
+          announceLive('Changes saved. Reading mode restored.');
+          showStatus('All edits successfully saved to memory.', 'success');
+        } else {
+          announceLive('Save failed. Reading mode restored with edits kept for this session.');
+          showDocumentStorageWarning('Save failed');
+        }
       });
     }
 
@@ -3122,9 +3141,13 @@
           debounceSaveTimer = window.setTimeout(() => {
             const text = els.readerContent.innerText || '';
             state.currentText = text;
-            storage.set(STORAGE_KEYS.text, state.currentText);
+            const textSaved = persistCurrentText();
             scheduleWordCountUpdate();
-            showStatus('Edits autosaved locally.', 'success');
+            if (textSaved) {
+              showStatus('Edits autosaved locally.', 'success');
+            } else {
+              showDocumentStorageWarning('Autosave failed');
+            }
           }, 1000);
         });
       }
