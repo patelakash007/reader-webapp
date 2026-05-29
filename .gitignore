@@ -1,4 +1,8 @@
-server.log
-MEMORY.md
-crab.svg
-preview.html
+# Ignore everything by default to track only the real repo files
+*
+
+# Allow the specific real repo files
+!index.html
+!README.md
+!LICENSE
+!.gitignore
