@@ -28,28 +28,26 @@
       'dark', 'void', 'carbon', 'midnight', 'obsidian', 'dracula', 'nord', 'catppuccin', 'forest', 'ink', 'deep', 'onyx'
     ]);
 
-    // Dynamic library configurations with SRI hashes. Fail closed if verification fails.
+    // Dynamic library configurations. Parser bundles are vendored locally.
     const LIBRARIES = {
       pdf: {
-        src: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
-        integrity: 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=',
+        src: 'vendor/pdf.min.js',
         check: () => window.pdfjsLib,
         onLoad: () => {
           if (window.pdfjsLib) {
-            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
           }
         }
       },
       mammoth: {
-        src: 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js',
-        integrity: 'sha256-WW71IjnlLY7jzuELLuSnJZar+QDQ5PRoWT+Vbp8YCbA=',
+        src: 'vendor/mammoth.browser.min.js',
         check: () => window.mammoth
       }
     };
 
     const loadedLibraries = new Map();
 
-    // Promise-based dynamic loader with Subresource Integrity
+    // Promise-based dynamic loader for local parser bundles.
     function loadLibrary(name) {
       if (loadedLibraries.has(name)) {
         return loadedLibraries.get(name);
@@ -67,10 +65,6 @@
         function createScript() {
           const script = document.createElement('script');
           script.src = lib.src;
-          script.crossOrigin = 'anonymous';
-          if (lib.integrity) {
-            script.integrity = lib.integrity;
-          }
           script.onload = () => {
             try {
               if (lib.onLoad) lib.onLoad();
@@ -84,7 +78,7 @@
             }
           };
           script.onerror = () => {
-            reject(new Error(`Failed to load verified library ${name}. Check your connection or update the integrity hash.`));
+            reject(new Error(`Failed to load local parser library ${name} from ${lib.src}. Check that the vendor file is available.`));
           };
           document.head.appendChild(script);
         }
