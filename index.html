@@ -23,7 +23,7 @@
   <div class="sheet-backdrop" id="sheetBackdrop"></div>
   
   <div class="editing-banner" id="editingBanner">
-    <span>You are in editing mode. Changes are autosaved to local memory.</span>
+    <span>You are in editing mode. Changes stay in this session and save locally when browser storage is available.</span>
     <button id="saveEditBannerBtn" type="button">Save & Exit</button>
   </div>
 
@@ -73,15 +73,15 @@
         <button class="tb-btn" data-size="large" type="button">L</button>
         <button class="tb-btn" data-size="xl" type="button">XL</button>
         <div class="tb-sep"></div>
-        <button class="tb-btn" id="focusBtn" type="button" title="Hide all UI" aria-label="Hide UI">&#9974;</button>
-        <button class="tb-btn" id="fullscreenBtn" type="button" title="Toggle Fullscreen" aria-label="Toggle Fullscreen">&#x26F6;</button>
-        <button class="tb-btn" id="autoScrollBtn" type="button" title="Auto Scroll" aria-label="Auto Scroll">&#x25B6;</button>
-        <button class="tb-btn" id="ttsBtn" type="button" title="Read Aloud" aria-label="Read Aloud">&#x1F50A;</button>
-        <button class="tb-btn" id="rulerBtn" type="button" title="Reading Ruler" aria-label="Reading Ruler">📏 Ruler</button>
-        <button class="tb-btn" id="settingsBtn" type="button" title="Reading Settings" aria-label="Reading Settings" aria-controls="settingsDrawer" aria-expanded="false">⚙️ Settings</button>
+        <button class="tb-btn" id="focusBtn" type="button" title="Hide UI" aria-label="Hide UI" aria-pressed="false">&#9974;</button>
+        <button class="tb-btn" id="fullscreenBtn" type="button" title="Enter Fullscreen" aria-label="Enter Fullscreen" aria-pressed="false">&#x26F6;</button>
+        <button class="tb-btn" id="autoScrollBtn" type="button" title="Start Auto Scroll" aria-label="Start Auto Scroll" aria-pressed="false">&#x25B6;</button>
+        <button class="tb-btn" id="ttsBtn" type="button" title="Start Read Aloud" aria-label="Start Read Aloud" aria-pressed="false">&#x1F50A;</button>
+        <button class="tb-btn" id="rulerBtn" type="button" title="Enable Reading Ruler" aria-label="Enable Reading Ruler" aria-pressed="false">📏 Ruler</button>
+        <button class="tb-btn" id="settingsBtn" type="button" title="Open Reading Settings" aria-label="Open Reading Settings" aria-controls="settingsDrawer" aria-expanded="false">⚙️ Settings</button>
         <button class="tb-btn" id="downloadBtn" type="button" title="Download Text" aria-label="Download Text">&#x2B07;</button>
         <div class="tb-sep"></div>
-        <button class="tb-btn" id="editBtn" type="button" title="Edit Text" aria-label="Edit Text">&#x270E; Edit</button>
+        <button class="tb-btn" id="editBtn" type="button" title="Edit Text" aria-label="Edit Text" aria-pressed="false">&#x270E; Edit</button>
       </div>
 
       <!-- Advanced Settings Drawer -->

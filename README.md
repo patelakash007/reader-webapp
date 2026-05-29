@@ -58,9 +58,7 @@ git clone git@github.com:patelakash007/reader-webapp.git
 cd reader-webapp
 ```
 
-Then open `index.html` in a browser.
-
-For a local server preview:
+For the most reliable preview, especially for PDF/DOCX parsing and the local PDF worker, run a local server:
 
 ```bash
 python -m http.server 8080
@@ -71,6 +69,8 @@ Then open:
 ```text
 http://localhost:8080/
 ```
+
+Opening `index.html` directly may work for pasted text, TXT, and Markdown, but browser file restrictions can make PDF/DOCX handling unreliable.
 
 ## Privacy notes
 

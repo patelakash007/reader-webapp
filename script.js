@@ -58,6 +58,7 @@
         if (!lib) return reject(new Error('Unknown library: ' + name));
 
         if (lib.check()) {
+          if (lib.onLoad) lib.onLoad();
           resolve(lib.check());
           return;
         }
@@ -769,9 +770,13 @@
       
       if (isRulerActive) {
         els.readingRuler.style.display = 'block';
+        els.rulerBtn.setAttribute('aria-label', 'Disable Reading Ruler');
+        els.rulerBtn.setAttribute('title', 'Disable Reading Ruler');
         showStatus('Reading ruler guide activated.', 'success');
       } else {
         els.readingRuler.style.display = 'none';
+        els.rulerBtn.setAttribute('aria-label', 'Enable Reading Ruler');
+        els.rulerBtn.setAttribute('title', 'Enable Reading Ruler');
         showStatus('Reading ruler guide deactivated.', 'info');
       }
     }
@@ -824,6 +829,9 @@
       if (isAutoScrolling) {
         els.autoScrollBtn.classList.add('active');
         els.autoScrollBtn.innerHTML = '&#x23F8;'; // Pause icon
+        els.autoScrollBtn.setAttribute('aria-pressed', 'true');
+        els.autoScrollBtn.setAttribute('aria-label', 'Stop Auto Scroll');
+        els.autoScrollBtn.setAttribute('title', 'Stop Auto Scroll');
         lastScrollTime = 0;
         scrollAccumulator = 0;
         requestAnimationFrame(autoScrollLoop);
@@ -831,6 +839,9 @@
       } else {
         els.autoScrollBtn.classList.remove('active');
         els.autoScrollBtn.innerHTML = '&#x25B6;'; // Play icon
+        els.autoScrollBtn.setAttribute('aria-pressed', 'false');
+        els.autoScrollBtn.setAttribute('aria-label', 'Start Auto Scroll');
+        els.autoScrollBtn.setAttribute('title', 'Start Auto Scroll');
         announceLive('Auto-scroll stopped.');
       }
     }
@@ -937,6 +948,9 @@
        if (els.ttsBtn) {
          els.ttsBtn.classList.remove('active');
          els.ttsBtn.innerHTML = '&#x1F50A;'; // Sound icon
+         els.ttsBtn.setAttribute('aria-pressed', 'false');
+         els.ttsBtn.setAttribute('aria-label', 'Start Read Aloud');
+         els.ttsBtn.setAttribute('title', 'Start Read Aloud');
        }
        announceLive('Text-to-speech stopped.');
     }
@@ -985,6 +999,9 @@
            if (els.ttsBtn) {
              els.ttsBtn.classList.add('active');
              els.ttsBtn.innerHTML = '&#x23F9;'; // Stop icon
+             els.ttsBtn.setAttribute('aria-pressed', 'true');
+             els.ttsBtn.setAttribute('aria-label', 'Stop Read Aloud');
+             els.ttsBtn.setAttribute('title', 'Stop Read Aloud');
            }
            window.speechSynthesis.cancel();
            announceLive('Text-to-speech started.');
@@ -1036,7 +1053,11 @@
 
     function updateFullscreenButton() {
       if (els.fullscreenBtn) {
-        els.fullscreenBtn.classList.toggle('active', Boolean(getFullscreenElement()));
+        const isFullscreen = Boolean(getFullscreenElement());
+        els.fullscreenBtn.classList.toggle('active', isFullscreen);
+        els.fullscreenBtn.setAttribute('aria-pressed', isFullscreen ? 'true' : 'false');
+        els.fullscreenBtn.setAttribute('aria-label', isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen');
+        els.fullscreenBtn.setAttribute('title', isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen');
       }
     }
 
@@ -1192,10 +1213,10 @@
       try {
         mammothLib = await loadLibrary('mammoth');
       } catch (err) {
-        throw new Error(`DOCX parser library failed to load: ${formatError(err)} Try checking your connection or exporting this file as TXT/Markdown.`);
+        throw new Error(`DOCX parser library failed to load: ${formatError(err)} Try reloading the app or exporting this file as TXT/Markdown.`);
       }
       if (!mammothLib) {
-        throw new Error('DOCX parser library is unavailable. Try checking your connection or exporting this file as TXT/Markdown.');
+        throw new Error('DOCX parser library is unavailable. Try reloading the app or exporting this file as TXT/Markdown.');
       }
 
       const result = await mammothLib.extractRawText({ arrayBuffer });
@@ -1327,7 +1348,7 @@
       }
       if (isSpeaking) stopTTS();
       if (isAutoScrolling) toggleAutoScroll();
-      if (document.fullscreenElement) toggleFullscreen();
+      if (getFullscreenElement()) toggleFullscreen();
 
       if (els.readerView) els.readerView.classList.remove('active');
       if (els.inputView) els.inputView.classList.remove('hidden');
@@ -1387,6 +1408,8 @@
       const expanded = els.settingsDrawer.classList.contains('active');
       els.settingsBtn.classList.toggle('active', expanded);
       els.settingsBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      els.settingsBtn.setAttribute('aria-label', expanded ? 'Close Reading Settings' : 'Open Reading Settings');
+      els.settingsBtn.setAttribute('title', expanded ? 'Close Reading Settings' : 'Open Reading Settings');
     }
 
     function toggleMobileSheet() {
@@ -1446,11 +1469,15 @@
       els.readerContent.textContent = state.currentText;
       
       els.readerContent.setAttribute('contenteditable', 'true');
+      els.readerContent.setAttribute('role', 'textbox');
+      els.readerContent.setAttribute('aria-label', 'Editable reader text');
+      els.readerContent.setAttribute('aria-multiline', 'true');
       els.editingBanner.classList.add('show');
       els.editBtn.innerHTML = '💾 Save';
       els.editBtn.classList.add('active');
       els.editBtn.setAttribute('title', 'Save and Exit');
       els.editBtn.setAttribute('aria-label', 'Save and Exit');
+      els.editBtn.setAttribute('aria-pressed', 'true');
       els.readerContent.focus();
 
       announceLive('Editing mode activated. Focus moved to raw reader text.');
@@ -1460,11 +1487,15 @@
       if (!els.readerContent || !els.editingBanner || !els.editBtn) return;
       state.isEditing = false;
       els.readerContent.setAttribute('contenteditable', 'false');
+      els.readerContent.removeAttribute('role');
+      els.readerContent.removeAttribute('aria-label');
+      els.readerContent.removeAttribute('aria-multiline');
       els.editingBanner.classList.remove('show');
       els.editBtn.innerHTML = '✏️ Edit';
       els.editBtn.classList.remove('active');
       els.editBtn.setAttribute('title', 'Edit Text');
       els.editBtn.setAttribute('aria-label', 'Edit Text');
+      els.editBtn.setAttribute('aria-pressed', 'false');
 
       const editedText = els.readerContent.innerText || '';
       state.currentText = editedText;
@@ -1543,7 +1574,7 @@
     }
 
     function toggleFocus() {
-      if (!els.toolbar || !els.backBtn || !els.wordCount || !els.focusRestore) return;
+      if (!els.toolbar || !els.backBtn || !els.wordCount || !els.focusRestore || !els.focusBtn) return;
       state.focusMode = !state.focusMode;
 
       if (state.focusMode) {
@@ -1551,6 +1582,9 @@
         els.backBtn.classList.add('force-hidden');
         els.wordCount.classList.add('force-hidden');
         els.focusRestore.classList.add('show');
+        els.focusBtn.setAttribute('aria-pressed', 'true');
+        els.focusBtn.setAttribute('aria-label', 'Show UI');
+        els.focusBtn.setAttribute('title', 'Show UI');
         setContainerFocusable(els.toolbar, false);
         window.clearTimeout(state.toolbarTimer);
         announceLive('Focus mode activated. UI controls hidden.');
@@ -1561,6 +1595,9 @@
       els.backBtn.classList.remove('force-hidden');
       els.wordCount.classList.remove('force-hidden');
       els.focusRestore.classList.remove('show');
+      els.focusBtn.setAttribute('aria-pressed', 'false');
+      els.focusBtn.setAttribute('aria-label', 'Hide UI');
+      els.focusBtn.setAttribute('title', 'Hide UI');
       setContainerFocusable(els.toolbar, true);
       resetToolbarTimer();
       announceLive('Focus mode deactivated. UI controls visible.');
