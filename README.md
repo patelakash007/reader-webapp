@@ -19,6 +19,7 @@ https://patelakash007.github.io/reader-webapp/
 - Typography presets for comfortable long-form reading
 - Text-to-speech support for listening while reading
 - Local-first design: files are processed in the browser
+- Optional document memory: saved reading state is opt-in per browser
 - PDF/DOCX parser libraries are bundled locally
 - Mobile-friendly layout for phone reading
 - Single-page app split into `index.html`, `style.css`, and `script.js`
@@ -76,7 +77,7 @@ Opening `index.html` directly may work for pasted text, TXT, and Markdown, but b
 
 Reader Webapp is designed to keep reading local-first. Documents are opened and processed inside the browser where possible, and PDF/DOCX parser libraries are bundled locally in this repo.
 
-Local-first does not mean zero network requests when the app is hosted online. Google Fonts may still be requested unless fonts are later vendored. Avoid pasting sensitive private data into any online-hosted version unless you fully trust the environment and browser session.
+Local-first does not mean zero risk when the app is hosted online, but the app avoids default third-party font requests and processes supported documents in the browser. Documents are not saved for later unless you enable "Remember this document on this browser." Avoid pasting sensitive private data into any online-hosted version unless you fully trust the environment and browser session.
 
 ## Development workflow
 

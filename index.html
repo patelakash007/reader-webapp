@@ -8,12 +8,8 @@
 <meta name="theme-color" content="#9a3524">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; object-src 'none'; base-uri 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'self'">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E&#128214;%3C/text%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<!-- Load Outfit and Newsreader for premium reading typography -->
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" id="default-fonts">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -48,11 +44,15 @@
       </label>
       <button class="btn btn-secondary" id="clearBtn" type="button" style="display:none;">Clear</button>
     </div>
+    <label class="remember-control" for="rememberInput">
+      <input type="checkbox" id="rememberInput">
+      <span>Remember this document on this browser</span>
+    </label>
     <div class="status-message" id="statusMessage" role="status" aria-live="polite"></div>
     
     <!-- Polished Local Processing Notice -->
     <div class="privacy-banner">
-      🔒 <strong>Local processing:</strong> Document content is processed in your browser. PDF.js and Mammoth parser libraries are bundled locally in this repo. The app may still request Google Fonts unless fonts are later vendored. Cleared data is removed from browser storage when storage is available.
+      🔒 <strong>Local processing:</strong> Document content is processed in your browser. PDF.js and Mammoth parser libraries are bundled locally in this repo. Documents are not saved for later unless you enable "Remember this document on this browser." Cleared data is removed from browser storage when storage is available.
     </div>
     
     <div class="note-text">Note: Multi-column PDFs and complex DOCX layouts may occasionally extract text out of order due to browser limitations.</div>

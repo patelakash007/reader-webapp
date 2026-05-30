@@ -11,11 +11,15 @@
       font: 'reader_font',
       theme: 'reader_theme',
       textColor: 'reader_textcolor',
-      smartHeadings: 'reader_smart_headings'
+      smartHeadings: 'reader_smart_headings',
+      remember: 'reader_remember_document'
     };
 
     const VALID_SIZES = new Set(['small', 'medium', 'large', 'xl']);
     const SUPPORTED_EXTENSIONS = new Set(['txt', 'md', 'pdf', 'docx']);
+    const MAX_FILE_SIZE = 15 * 1024 * 1024;
+    const MAX_EXTRACTED_TEXT_CHARS = 1_000_000;
+    const MAX_PDF_PAGES = 500;
 
     const VALID_FONTS = new Set([
       'sans', 'serif', 'minimal', 'bold', 'clean', 'literata', 'merriweather', 'libre', 'atkinson', 'jakarta', 'outfit', 'bebas', 'oswald', 'manrope', 'sora'
@@ -102,6 +106,7 @@
       readBtn: document.getElementById('readBtn'),
       fileInput: document.getElementById('fileInput'),
       clearBtn: document.getElementById('clearBtn'),
+      rememberInput: document.getElementById('rememberInput'),
       loader: document.getElementById('loader'),
       loaderText: document.querySelector('.loader-text'),
       toolbar: document.getElementById('toolbar'),
@@ -231,7 +236,25 @@
       }
     };
 
+    function shouldRememberDocument() {
+      return Boolean(els.rememberInput && els.rememberInput.checked);
+    }
+
+    function setRememberDocument(remember) {
+      if (els.rememberInput) els.rememberInput.checked = Boolean(remember);
+      storage.set(STORAGE_KEYS.remember, remember ? 'true' : 'false');
+      if (!remember) {
+        storage.remove(STORAGE_KEYS.text);
+        storage.set(STORAGE_KEYS.scroll, 0);
+        if (els.continueBanner) els.continueBanner.classList.remove('show');
+      }
+    }
+
     function persistCurrentText() {
+      if (!shouldRememberDocument()) {
+        storage.remove(STORAGE_KEYS.text);
+        return true;
+      }
       return storage.set(STORAGE_KEYS.text, state.currentText);
     }
 
@@ -281,6 +304,14 @@
       return err && err.message ? err.message : 'Unknown error';
     }
 
+    function enforceExtractedTextLimit(text, context = 'document') {
+      const value = typeof text === 'string' ? text : '';
+      if (value.length > MAX_EXTRACTED_TEXT_CHARS) {
+        throw new Error(`This ${context} contains too much extracted text for the browser reader. Limit is ${MAX_EXTRACTED_TEXT_CHARS.toLocaleString()} characters.`);
+      }
+      return value;
+    }
+
     function clampNumber(value, fallback, min, max) {
       const parsed = Number.parseFloat(value);
       if (!Number.isFinite(parsed)) return fallback;
@@ -293,22 +324,26 @@
 
     // ===== Presets and Custom Typography Colors =====
     const loadedFonts = new Set(['sans', 'serif']);
+    const systemSans = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    const systemSerif = 'Georgia, "Times New Roman", serif';
+    const systemMono = 'ui-monospace, SFMono-Regular, Consolas, monospace';
     const fontMap = {
-      serif: { family: "'Newsreader', serif", weight: 500, url: null },
-      sans: { family: "'Outfit', sans-serif", weight: 600, url: null },
-      minimal: { family: "'Space Grotesk', sans-serif", weight: 700, url: 'family=Space+Grotesk:wght@400;700' },
-      bold: { family: "'Syne', sans-serif", weight: 800, url: 'family=Syne:wght@400;800' },
-      clean: { family: "'DM Sans', sans-serif", weight: 700, url: 'family=DM+Sans:wght@400;700' },
-      literata: { family: "'Literata', serif", weight: 700, url: 'family=Literata:ital,wght@0,400;0,700;1,400' },
-      merriweather: { family: "'Merriweather', serif", weight: 700, url: 'family=Merriweather:ital,wght@0,400;0,700;1,400' },
-      libre: { family: "'Libre Baskerville', serif", weight: 700, url: 'family=Libre+Baskerville:ital,wght@0,400;0,700;1,400' },
-      atkinson: { family: "'Atkinson Hyperlegible', sans-serif", weight: 700, url: 'family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400' },
-      jakarta: { family: "'Plus Jakarta Sans', sans-serif", weight: 700, url: 'family=Plus+Jakarta+Sans:ital,wght@0,400;0,700;1,400' },
-      outfit: { family: "'Outfit', sans-serif", weight: 700, url: 'family=Outfit:wght@400;700' },
-      bebas: { family: "'Bebas Neue', sans-serif", weight: 400, url: 'family=Bebas+Neue' },
-      oswald: { family: "'Oswald', sans-serif", weight: 700, url: 'family=Oswald:wght@400;700' },
-      manrope: { family: "'Manrope', sans-serif", weight: 700, url: 'family=Manrope:wght@400;700' },
-      sora: { family: "'Sora', sans-serif", weight: 700, url: 'family=Sora:wght@400;700' }
+      serif: { family: systemSerif, weight: 500, url: null },
+      sans: { family: systemSans, weight: 600, url: null },
+      minimal: { family: systemSans, weight: 700, url: null },
+      bold: { family: systemSans, weight: 800, url: null },
+      clean: { family: systemSans, weight: 700, url: null },
+      literata: { family: systemSerif, weight: 700, url: null },
+      merriweather: { family: systemSerif, weight: 700, url: null },
+      libre: { family: systemSerif, weight: 700, url: null },
+      atkinson: { family: systemSans, weight: 700, url: null },
+      jakarta: { family: systemSans, weight: 700, url: null },
+      outfit: { family: systemSans, weight: 700, url: null },
+      bebas: { family: systemSans, weight: 700, url: null },
+      oswald: { family: systemSans, weight: 700, url: null },
+      manrope: { family: systemSans, weight: 700, url: null },
+      sora: { family: systemSans, weight: 700, url: null },
+      mono: { family: systemMono, weight: 600, url: null }
     };
 
     const lightPresets = [
@@ -371,16 +406,7 @@
     function ensureFontLoaded(fontKey) {
       if (loadedFonts.has(fontKey)) return;
       const cfg = fontMap[fontKey];
-      if (!cfg || !cfg.url) return;
-
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = `https://fonts.googleapis.com/css2?${cfg.url}&display=swap`;
-      link.onerror = () => {
-        loadedFonts.delete(fontKey);
-        showStatus(`Could not load the ${fontKey} font. Using the browser fallback.`, 'info');
-      };
-      document.head.appendChild(link);
+      if (!cfg) return;
       loadedFonts.add(fontKey);
     }
 
@@ -1195,13 +1221,22 @@
 
       const typedArray = new Uint8Array(arrayBuffer);
       const pdf = await pdfLib.getDocument({ data: typedArray }).promise;
+      if (pdf.numPages > MAX_PDF_PAGES) {
+        throw new Error(`This PDF has ${pdf.numPages} pages. Limit is ${MAX_PDF_PAGES} pages for browser processing.`);
+      }
       const pages = [];
+      let totalTextLength = 0;
 
       for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
         showLoader(`Reading page ${pageNumber} of ${pdf.numPages}...`);
         const page = await pdf.getPage(pageNumber);
         const content = await page.getTextContent();
-        pages.push(extractPdfPageText(content.items));
+        const pageText = extractPdfPageText(content.items);
+        totalTextLength += pageText.length;
+        if (totalTextLength > MAX_EXTRACTED_TEXT_CHARS) {
+          throw new Error(`This PDF contains too much extracted text for the browser reader. Limit is ${MAX_EXTRACTED_TEXT_CHARS.toLocaleString()} characters.`);
+        }
+        pages.push(pageText);
       }
 
       return pages.join('\n\n').trim();
@@ -1220,13 +1255,13 @@
       }
 
       const result = await mammothLib.extractRawText({ arrayBuffer });
-      return (result.value || '').trim();
+      return enforceExtractedTextLimit((result.value || '').trim(), 'DOCX');
     }
 
     async function readSelectedFile(file, extension) {
       if (extension === 'txt' || extension === 'md') {
         showLoader('Reading text file...');
-        return readFileAsText(file);
+        return enforceExtractedTextLimit(await readFileAsText(file), 'text file');
       }
 
       if (extension === 'pdf') {
@@ -1250,8 +1285,7 @@
       const extension = getExtension(file.name);
       clearStatus();
 
-      // Production Guard: Prevent out of bounds file size crashes
-      const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 Megabytes
+      // Production guard: prevent out-of-bounds file size crashes before parsing.
       if (file.size > MAX_FILE_SIZE) {
         showStatus(`File "${file.name}" is too large (${(file.size / (1024*1024)).toFixed(1)}MB). Limit is 15MB.`, 'error');
         if (target && 'value' in target) target.value = '';
@@ -1312,6 +1346,7 @@
       }
 
       if (els.pasteArea) els.pasteArea.value = saved;
+      setRememberDocument(true);
       toggleClearBtn();
       loadTextFlow(saved, true);
     }
@@ -1328,10 +1363,18 @@
         return;
       }
 
+      let safeText;
+      try {
+        safeText = enforceExtractedTextLimit(text, 'document');
+      } catch (err) {
+        showStatus(formatError(err), 'error');
+        return;
+      }
+
       clearStatus();
-      state.currentText = text;
+      state.currentText = safeText;
       const textSaved = persistCurrentText();
-      if (!isRestore) storage.set(STORAGE_KEYS.scroll, 0);
+      if (!isRestore && shouldRememberDocument()) storage.set(STORAGE_KEYS.scroll, 0);
       if (!textSaved) showDocumentStorageWarning('Document loaded, but save failed');
       renderTextAsync(state.currentText, enterReader);
     }
@@ -1504,7 +1547,10 @@
       // Re-compile raw markdown back into safe HTML blocks
       renderTextAsync(state.currentText, () => {
         scheduleWordCountUpdate();
-        if (textSaved) {
+        if (!shouldRememberDocument()) {
+          announceLive('Changes kept for this session. Reading mode restored.');
+          showStatus('Edits kept for this session.', 'success');
+        } else if (textSaved) {
           announceLive('Changes saved. Reading mode restored.');
           showStatus('All edits successfully saved to memory.', 'success');
         } else {
@@ -1823,7 +1869,9 @@
 
         window.clearTimeout(state.scrollSaveTimer);
         state.scrollSaveTimer = window.setTimeout(() => {
-          storage.set(STORAGE_KEYS.scroll, Math.round(winScroll));
+          if (shouldRememberDocument()) {
+            storage.set(STORAGE_KEYS.scroll, Math.round(winScroll));
+          }
         }, 250);
       }, { passive: true });
 
@@ -1849,6 +1897,18 @@
         els.pasteArea.addEventListener('input', () => {
           toggleClearBtn();
           clearStatus();
+        });
+      }
+
+      if (els.rememberInput) {
+        els.rememberInput.addEventListener('change', () => {
+          setRememberDocument(els.rememberInput.checked);
+          if (els.rememberInput.checked && state.currentText) {
+            const textSaved = persistCurrentText();
+            if (!textSaved) showDocumentStorageWarning('Remember setting enabled, but save failed');
+          } else if (!els.rememberInput.checked) {
+            showStatus('Document memory disabled for this browser.', 'info');
+          }
         });
       }
 
@@ -2057,7 +2117,9 @@
             state.currentText = text;
             const textSaved = persistCurrentText();
             scheduleWordCountUpdate();
-            if (textSaved) {
+            if (!shouldRememberDocument()) {
+              showStatus('Edits kept for this session.', 'success');
+            } else if (textSaved) {
               showStatus('Edits autosaved locally.', 'success');
             } else {
               showDocumentStorageWarning('Autosave failed');
@@ -2071,6 +2133,8 @@
       bindEvents();
 
       const savedText = storage.get(STORAGE_KEYS.text, '');
+      const savedRemember = storage.get(STORAGE_KEYS.remember, 'false') === 'true' || Boolean(savedText.trim());
+      if (els.rememberInput) els.rememberInput.checked = savedRemember;
       if (savedText.trim() && els.continueBanner) els.continueBanner.classList.add('show');
 
       state.smartHeadings = storage.get(STORAGE_KEYS.smartHeadings, 'true') !== 'false';
