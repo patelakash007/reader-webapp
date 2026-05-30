@@ -1,6 +1,6 @@
 # Reader Webapp
 
-A personal, clean reading webapp for articles, AI responses, Markdown, PDFs, DOCX files, and long text.
+A personal, clean reading webapp for articles, AI responses, basic Markdown, PDFs, DOCX files, and long text.
 
 The goal is simple: paste or open messy reading material, remove the noise, and read it in a calmer interface with better typography, themes, and local-first privacy.
 
@@ -14,7 +14,7 @@ https://patelakash007.github.io/reader-webapp/
 
 - Clean reader view for long articles, notes, and AI responses
 - Supports pasted text and local document reading
-- PDF, DOCX, Markdown, and TXT focused workflow
+- PDF, DOCX, basic Markdown, and TXT focused workflow
 - Many reading themes including paper, dark, Kindle-like, Notion-like, GitHub-like, Dracula, Nord, and more
 - Typography presets for comfortable long-form reading
 - Text-to-speech support for listening while reading
