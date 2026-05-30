@@ -2,3 +2,25 @@ server.log
 MEMORY.md
 crab.svg
 preview.html
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and local temp files
+*.log
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Dependency, build, and coverage output
+node_modules/
+.cache/
+dist/
+build/
+coverage/

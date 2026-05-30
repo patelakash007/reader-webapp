@@ -1,0 +1,66 @@
+name: Quality checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check required files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_files=(
+            "index.html"
+            "style.css"
+            "script.js"
+            "README.md"
+            "LICENSE"
+            "vendor/pdf.min.js"
+            "vendor/pdf.worker.min.js"
+            "vendor/mammoth.browser.min.js"
+          )
+
+          for file in "${required_files[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              echo "Missing required file: $file" >&2
+              exit 1
+            fi
+          done
+
+      - name: Check CSP meta tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -qi 'Content-Security-Policy' index.html
+
+      - name: Check for CDN URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if grep -Ein '(cdn(js)?|unpkg|jsdelivr)' index.html style.css script.js; then
+            echo "CDN reference found in app source files." >&2
+            exit 1
+          fi
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if command -v node >/dev/null 2>&1; then
+            node --check script.js
+          else
+            echo "Node is not available; skipping script.js syntax check."
+          fi
