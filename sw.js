@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'reader-webapp-shell-v2';
+const CACHE_NAME = 'reader-webapp-shell-v3';
 const APP_SHELL = [
   './',
   './index.html',
@@ -16,40 +16,39 @@ const APP_SHELL = [
   './icons/maskable-512.png'
 ];
 
-const SHELL_URLS = new Set(APP_SHELL.map(path => {
-  const url = new URL(path, self.registration.scope);
-  url.hash = '';
-  url.search = '';
-  return url.href;
-}));
+const ROOT_URL = new URL('./', self.registration.scope).href;
+const INDEX_URL = new URL('./index.html', self.registration.scope).href;
+const APP_SHELL_URLS = new Set(APP_SHELL.map(path => new URL(path, self.registration.scope).href));
+const CANONICAL_NAVIGATION_URLS = new Set([ROOT_URL, INDEX_URL]);
 
-function normalizeRequestUrl(request) {
+function getRequestUrl(request) {
   const url = new URL(request.url);
   url.hash = '';
-  url.search = '';
   return url.href;
 }
 
-function isShellRequest(request) {
-  if (request.method !== 'GET') return false;
-  if (new URL(request.url).origin !== self.location.origin) return false;
-  return SHELL_URLS.has(normalizeRequestUrl(request));
+function isSameOriginGet(request) {
+  return request.method === 'GET' && new URL(request.url).origin === self.location.origin;
 }
 
-async function networkFirst(request) {
-  const cache = await caches.open(CACHE_NAME);
-  const cacheKey = normalizeRequestUrl(request);
+function isCanonicalAppShellRequest(request) {
+  return isSameOriginGet(request) && APP_SHELL_URLS.has(getRequestUrl(request));
+}
 
-  try {
-    const response = await fetch(request, { cache: 'no-cache' });
-    if (response && response.ok && isShellRequest(request)) {
-      await cache.put(cacheKey, response.clone());
-    }
-    return response;
-  } catch (err) {
-    const cached = await cache.match(cacheKey);
-    if (cached) return cached;
-    throw err;
+function isCanonicalNavigation(request) {
+  return request.mode === 'navigate' && CANONICAL_NAVIGATION_URLS.has(getRequestUrl(request));
+}
+
+async function cacheCanonicalNavigation(cache, request, response) {
+  if (!response || !response.ok || !isCanonicalNavigation(request)) return;
+
+  const requestUrl = getRequestUrl(request);
+  await cache.put(requestUrl, response.clone());
+
+  if (requestUrl === ROOT_URL) {
+    await cache.put(INDEX_URL, response.clone());
+  } else if (requestUrl === INDEX_URL) {
+    await cache.put(ROOT_URL, response.clone());
   }
 }
 
@@ -58,19 +57,37 @@ async function navigationResponse(request) {
 
   try {
     const response = await fetch(request, { cache: 'no-cache' });
-    if (response && response.ok) {
-      await cache.put(new URL('./index.html', self.registration.scope).href, response.clone());
-    }
+    await cacheCanonicalNavigation(cache, request, response);
     return response;
   } catch (err) {
-    return await cache.match('./index.html') || cache.match('./');
+    const cachedShell = await cache.match(INDEX_URL) || await cache.match(ROOT_URL);
+    return cachedShell || Response.error();
   }
+}
+
+async function staleWhileRevalidate(request, event) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+  const fetchPromise = fetch(request, { cache: 'no-cache' }).then(async response => {
+    if (response && response.ok && isCanonicalAppShellRequest(request)) {
+      await cache.put(request, response.clone());
+    }
+    return response;
+  });
+
+  if (cached) {
+    event.waitUntil(fetchPromise.catch(() => undefined));
+    return cached;
+  }
+
+  return fetchPromise;
 }
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(APP_SHELL.map(path => new Request(path, { cache: 'reload' })));
+    const requests = APP_SHELL.map(path => new Request(new URL(path, self.registration.scope), { cache: 'reload' }));
+    await cache.addAll(requests);
     await self.skipWaiting();
   })());
 });
@@ -93,7 +110,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  if (isShellRequest(request)) {
-    event.respondWith(networkFirst(request));
+  if (isCanonicalAppShellRequest(request)) {
+    event.respondWith(staleWhileRevalidate(request, event));
   }
 });

@@ -29,17 +29,17 @@
     <button id="saveEditBannerBtn" type="button">Save & Exit</button>
   </div>
 
-  <button class="mobile-fab" id="mobileFab" type="button" aria-label="Toggle Reading Settings" aria-controls="toolbar" aria-expanded="false">🎛️</button>
+  <button class="mobile-fab" id="mobileFab" type="button" aria-label="Toggle Reading Settings" aria-controls="toolbar" aria-expanded="false"><span aria-hidden="true">&#x1F39B;&#xFE0F;</span></button>
 
   <main id="inputView">
-    <div class="brand">Reader</div>
+    <h1 class="brand">Reader</h1>
     <div class="subtitle">Paste your text or drop a file anywhere here</div>
     <textarea class="paste-area" id="pasteArea" aria-label="Text to read" placeholder="Paste text here..."></textarea>
     <div class="controls-row">
       <button class="btn btn-primary" id="readBtn" type="button">Read Text</button>
       <label class="file-input-wrap btn btn-secondary" for="fileInput">
         <span>Upload File</span>
-        <input type="file" id="fileInput" accept=".txt,.pdf,.docx,.md" aria-label="Upload text, Markdown, PDF, or DOCX file">
+        <input type="file" id="fileInput" accept=".txt,.pdf,.docx,.md">
       </label>
       <button class="btn btn-secondary" id="clearBtn" type="button" style="display:none;">Clear</button>
     </div>
@@ -47,36 +47,36 @@
     
     <!-- Polished Local Processing Notice -->
     <div class="privacy-banner">
-      🔒 <strong>Local processing:</strong> Document content is processed in your browser. PDF.js and Mammoth parser libraries are bundled locally in this repo. Documents and preferences are not saved by the app.
+      <span aria-hidden="true">&#x1F512;</span> <strong>Local processing:</strong> Document content is processed in your browser. PDF.js and Mammoth parser libraries are bundled locally in this repo. Documents and preferences are not saved by the app.
     </div>
     
     <div class="note-text">Note: Multi-column PDFs and complex DOCX layouts may occasionally extract text out of order due to browser limitations.</div>
   </main>
 
   <section id="readerView" aria-label="Reader view">
-    <button class="back-btn" id="backBtn" type="button" aria-label="Go Back">&#8592;</button>
+    <button class="back-btn" id="backBtn" type="button" aria-label="Go Back"><span aria-hidden="true">&#8592;</span></button>
 
     <div id="toolbar">
       <button class="bottom-sheet-handle" id="bottomSheetHandle" type="button" aria-label="Collapse Reading Settings"></button>
       
       <div class="toolbar-top-row">
-        <button class="tb-btn" id="tocBtn" type="button" title="Table of Contents" aria-label="Table of Contents">&#x2630;</button>
+        <button class="tb-btn" id="tocBtn" type="button" title="Table of Contents" aria-label="Table of Contents"><span aria-hidden="true">&#x2630;</span></button>
         <div class="tb-sep"></div>
         <span class="tb-label">Size</span>
-        <button class="tb-btn" data-size="small" type="button" aria-label="Small text size">S</button>
-        <button class="tb-btn active" data-size="medium" type="button" aria-label="Medium text size">M</button>
-        <button class="tb-btn" data-size="large" type="button" aria-label="Large text size">L</button>
-        <button class="tb-btn" data-size="xl" type="button" aria-label="Extra large text size">XL</button>
+        <button class="tb-btn" data-size="small" type="button" aria-label="Small text size" aria-pressed="false">S</button>
+        <button class="tb-btn active" data-size="medium" type="button" aria-label="Medium text size" aria-pressed="true">M</button>
+        <button class="tb-btn" data-size="large" type="button" aria-label="Large text size" aria-pressed="false">L</button>
+        <button class="tb-btn" data-size="xl" type="button" aria-label="Extra large text size" aria-pressed="false">XL</button>
         <div class="tb-sep"></div>
-        <button class="tb-btn" id="focusBtn" type="button" title="Hide UI" aria-label="Hide UI" aria-pressed="false">&#9974;</button>
-        <button class="tb-btn" id="fullscreenBtn" type="button" title="Enter Fullscreen" aria-label="Enter Fullscreen" aria-pressed="false">&#x26F6;</button>
-        <button class="tb-btn" id="autoScrollBtn" type="button" title="Start Auto Scroll" aria-label="Start Auto Scroll" aria-pressed="false">&#x25B6;</button>
-        <button class="tb-btn" id="ttsBtn" type="button" title="Start Read Aloud" aria-label="Start Read Aloud" aria-pressed="false">&#x1F50A;</button>
-        <button class="tb-btn" id="rulerBtn" type="button" title="Enable Reading Ruler" aria-label="Enable Reading Ruler" aria-pressed="false">📏 Ruler</button>
-        <button class="tb-btn" id="settingsBtn" type="button" title="Open Reading Settings" aria-label="Open Reading Settings" aria-controls="settingsDrawer" aria-expanded="false">⚙️ Settings</button>
-        <button class="tb-btn" id="downloadBtn" type="button" title="Download Text" aria-label="Download Text">&#x2B07;</button>
+        <button class="tb-btn" id="focusBtn" type="button" title="Hide UI" aria-label="Hide UI" aria-pressed="false"><span aria-hidden="true">&#9974;</span></button>
+        <button class="tb-btn" id="fullscreenBtn" type="button" title="Enter Fullscreen" aria-label="Enter Fullscreen" aria-pressed="false"><span aria-hidden="true">&#x26F6;</span></button>
+        <button class="tb-btn" id="autoScrollBtn" type="button" title="Start Auto Scroll" aria-label="Start Auto Scroll" aria-pressed="false"><span aria-hidden="true">&#x25B6;</span></button>
+        <button class="tb-btn" id="ttsBtn" type="button" title="Start Read Aloud" aria-label="Start Read Aloud" aria-pressed="false"><span aria-hidden="true">&#x1F50A;</span></button>
+        <button class="tb-btn" id="rulerBtn" type="button" title="Enable Reading Ruler" aria-label="Enable Reading Ruler" aria-pressed="false"><span aria-hidden="true">&#x1F4CF;</span> Ruler</button>
+        <button class="tb-btn" id="settingsBtn" type="button" title="Open Reading Settings" aria-label="Open Reading Settings" aria-controls="settingsDrawer" aria-expanded="false"><span aria-hidden="true">&#x2699;&#xFE0F;</span> Settings</button>
+        <button class="tb-btn" id="downloadBtn" type="button" title="Download Text" aria-label="Download Text"><span aria-hidden="true">&#x2B07;</span></button>
         <div class="tb-sep"></div>
-        <button class="tb-btn" id="editBtn" type="button" title="Edit Text" aria-label="Edit Text" aria-pressed="false">&#x270E; Edit</button>
+        <button class="tb-btn" id="editBtn" type="button" title="Edit Text" aria-label="Edit Text" aria-pressed="false"><span aria-hidden="true">&#x270E;</span> Edit</button>
       </div>
 
       <!-- Advanced Settings Drawer -->
@@ -104,7 +104,7 @@
           <div class="settings-row">
             <div class="control-item" style="flex: 2;">
               <label for="voiceSelect">Voice</label>
-              <select id="voiceSelect" aria-label="Select Voice"></select>
+              <select id="voiceSelect"></select>
             </div>
             <div class="control-item" style="flex: 1;">
               <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -133,7 +133,7 @@
           <span class="settings-label">Parsing</span>
           <div class="settings-row">
             <label class="control-item checkbox-control">
-              <input type="checkbox" id="smartHeadingsInput" aria-label="Smart Headings" checked>
+              <input type="checkbox" id="smartHeadingsInput" checked>
               <span>Smart Headings</span>
             </label>
           </div>
@@ -141,17 +141,17 @@
       </div>
 
       <div class="preset-carousel" id="presetCarousel">
-        <button class="preset-arrow" id="arrowLeft" type="button" aria-label="Previous Preset">&#10094;</button>
+        <button class="preset-arrow" id="arrowLeft" type="button" aria-label="Previous Preset"><span aria-hidden="true">&#10094;</span></button>
         <div class="preset-window" id="presetWindow" tabindex="0" role="region" aria-label="Reading preset carousel">
           <div class="preset-track snapping" id="presetTrack"></div>
         </div>
-        <button class="preset-arrow" id="arrowRight" type="button" aria-label="Next Preset">&#10095;</button>
+        <button class="preset-arrow" id="arrowRight" type="button" aria-label="Next Preset"><span aria-hidden="true">&#10095;</span></button>
       </div>
       <div class="preset-dots" id="presetDots"></div>
 
       <div class="mode-toggle-row">
-        <button class="mode-btn active" id="modeLight" type="button">&#9728; Light</button>
-        <button class="mode-btn" id="modeDark" type="button">&#9790; Dark</button>
+        <button class="mode-btn active" id="modeLight" type="button" aria-pressed="true"><span aria-hidden="true">&#9728;</span> Light</button>
+        <button class="mode-btn" id="modeDark" type="button" aria-pressed="false"><span aria-hidden="true">&#9790;</span> Dark</button>
       </div>
     </div>
 
@@ -159,7 +159,7 @@
     <article class="reader-content fs-medium" id="readerContent"></article>
     <div class="wordcount" id="wordCount"></div>
     <div class="status-message reader-status-message" id="readerStatusMessage" role="status" aria-live="polite"></div>
-    <button id="focusRestore" type="button" title="Show UI" aria-label="Show UI">&#8853;</button>
+    <button id="focusRestore" type="button" title="Show UI" aria-label="Show UI"><span aria-hidden="true">&#8853;</span></button>
   </section>
 
   <div id="gestureHint">
@@ -175,7 +175,7 @@
   <dialog id="tocDialog" class="modal" aria-labelledby="tocTitle">
     <div class="modal-header">
       <h3 id="tocTitle">Table of Contents</h3>
-      <button id="closeTocBtn" type="button" aria-label="Close Table of Contents">&times;</button>
+      <button id="closeTocBtn" type="button" aria-label="Close Table of Contents"><span aria-hidden="true">&times;</span></button>
     </div>
     <div class="modal-body" id="tocBody"></div>
   </dialog>
