@@ -529,7 +529,7 @@
         .replace(/\*([^*]+)\*/g, '<em>$1</em>')
         .replace(/\b_([^_]+)_\b/g, '<em>$1</em>')
         .replace(/`([^`]+)`/g, '<code>$1</code>')
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+        .replace(/\[([^\]]+)\]\(((?:[^()\\]|\\.|\([^()]*\))+)\)/g, (match, text, url) => {
           const cleanUrl = url.trim();
           
           // Strict blocklist for malicious URL schemes
@@ -706,9 +706,26 @@
       }, 50);
     }
 
+    function getReaderTextForCounting() {
+      if (!els.readerContent) return '';
+      if (state.isEditing) {
+        return els.readerContent.innerText || els.readerContent.textContent || '';
+      }
+
+      const blocks = els.readerContent.querySelectorAll('h1, h2, h3, p, li, blockquote, pre');
+      if (!blocks.length) {
+        return els.readerContent.innerText || els.readerContent.textContent || '';
+      }
+
+      return Array.from(blocks)
+        .map(block => (block.textContent || '').trim())
+        .filter(Boolean)
+        .join(' ');
+    }
+
     function updateWordCount() {
       if (!els.readerContent || !els.wordCount) return;
-      const text = els.readerContent.textContent || '';
+      const text = getReaderTextForCounting();
       const words = text.trim().split(/\s+/).filter(word => word.length > 0).length;
       const minutes = Math.ceil(words / 238);
       const timeString = words < 238 ? '< 1 min read' : `~${minutes} min read`;
@@ -1064,6 +1081,31 @@
       });
     }
 
+    function getHeadingScrollOffset() {
+      if (!els.toolbar || isMobileSheetLayout() || state.focusMode || els.toolbar.classList.contains('hidden-bar')) {
+        return 0;
+      }
+
+      const rect = els.toolbar.getBoundingClientRect();
+      if (rect.height <= 0 || rect.bottom <= 0) return 0;
+      return Math.ceil(rect.bottom + 16);
+    }
+
+    function scrollHeadingIntoView(heading) {
+      if (!heading) return;
+      const offset = getHeadingScrollOffset();
+      if (!offset) {
+        heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+
+      const headingTop = heading.getBoundingClientRect().top + window.pageYOffset;
+      window.scrollTo({
+        top: Math.max(0, headingTop - offset),
+        behavior: 'smooth'
+      });
+    }
+
     function populateAndShowTOC() {
        if (!els.readerContent || !els.tocDialog || !els.tocBody) return;
        const headings = els.readerContent.querySelectorAll('h1, h2, h3');
@@ -1083,7 +1125,7 @@
           a.href = `#${h.id}`;
           a.addEventListener('click', (e) => {
              e.preventDefault();
-             h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+             scrollHeadingIntoView(h);
              els.tocDialog.close();
           });
           els.tocBody.appendChild(a);
