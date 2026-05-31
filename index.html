@@ -19,20 +19,13 @@
   <div class="sheet-backdrop" id="sheetBackdrop"></div>
   
   <div class="editing-banner" id="editingBanner">
-    <span>You are in editing mode. Changes stay in this session and save locally when browser storage is available.</span>
+    <span>You are in editing mode. Changes stay only in this open page session.</span>
     <button id="saveEditBannerBtn" type="button">Save & Exit</button>
   </div>
 
   <button class="mobile-fab" id="mobileFab" type="button" aria-label="Toggle Reading Settings" aria-controls="toolbar" aria-expanded="false">🎛️</button>
 
   <main id="inputView">
-    <div class="continue-banner" id="continueBanner">
-      <span>Continue reading your last text?</span>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-primary" id="continueBtn" type="button">Continue</button>
-        <button class="btn btn-secondary" id="dismissBtn" type="button">Dismiss</button>
-      </div>
-    </div>
     <div class="brand">Reader</div>
     <div class="subtitle">Paste your text or drop a file anywhere here</div>
     <textarea class="paste-area" id="pasteArea" aria-label="Text to read" placeholder="Paste text here..."></textarea>
@@ -44,15 +37,11 @@
       </label>
       <button class="btn btn-secondary" id="clearBtn" type="button" style="display:none;">Clear</button>
     </div>
-    <label class="remember-control" for="rememberInput">
-      <input type="checkbox" id="rememberInput">
-      <span>Remember this document on this browser</span>
-    </label>
     <div class="status-message" id="statusMessage" role="status" aria-live="polite"></div>
     
     <!-- Polished Local Processing Notice -->
     <div class="privacy-banner">
-      🔒 <strong>Local processing:</strong> Document content is processed in your browser. PDF.js and Mammoth parser libraries are bundled locally in this repo. Documents are not saved for later unless you enable "Remember this document on this browser." Cleared data is removed from browser storage when storage is available.
+      🔒 <strong>Local processing:</strong> Document content is processed in your browser. PDF.js and Mammoth parser libraries are bundled locally in this repo. Documents and preferences are not saved by the app.
     </div>
     
     <div class="note-text">Note: Multi-column PDFs and complex DOCX layouts may occasionally extract text out of order due to browser limitations.</div>

@@ -1,19 +1,35 @@
   (function () {
     'use strict';
 
-    // ===== Constants and Storage State =====
-    const STORAGE_KEYS = {
-      text: 'reader_text',
-      scroll: 'reader_scroll',
-      size: 'reader_size',
-      mode: 'reader_mode',
-      presetIndex: 'reader_preset_index',
-      font: 'reader_font',
-      theme: 'reader_theme',
-      textColor: 'reader_textcolor',
-      smartHeadings: 'reader_smart_headings',
-      remember: 'reader_remember_document'
-    };
+    // ===== Constants and Startup Cleanup =====
+    function cleanupLegacyBrowserStorage() {
+      const legacyKeys = [
+        'reader_text',
+        'reader_scroll',
+        'reader_size',
+        'reader_mode',
+        'reader_preset_index',
+        'reader_font',
+        'reader_theme',
+        'reader_textcolor',
+        'reader_smart_headings',
+        'reader_remember_document',
+        'reader_lineheight',
+        'reader_letterspacing',
+        'reader_margin',
+        'reader_voice_rate',
+        'reader_voice_uri',
+        'reader_scroll_speed'
+      ];
+
+      try {
+        const legacyStore = window.localStorage;
+        if (!legacyStore) return;
+        legacyKeys.forEach(key => legacyStore.removeItem(key));
+      } catch (err) {
+        console.warn('Unable to clean up legacy reader storage.', err);
+      }
+    }
 
     const VALID_SIZES = new Set(['small', 'medium', 'large', 'xl']);
     const SUPPORTED_EXTENSIONS = new Set(['txt', 'md', 'pdf', 'docx']);
@@ -101,18 +117,14 @@
       readerView: document.getElementById('readerView'),
       readerContent: document.getElementById('readerContent'),
       pasteArea: document.getElementById('pasteArea'),
-      continueBtn: document.getElementById('continueBtn'),
-      dismissBtn: document.getElementById('dismissBtn'),
       readBtn: document.getElementById('readBtn'),
       fileInput: document.getElementById('fileInput'),
       clearBtn: document.getElementById('clearBtn'),
-      rememberInput: document.getElementById('rememberInput'),
       loader: document.getElementById('loader'),
       loaderText: document.querySelector('.loader-text'),
       toolbar: document.getElementById('toolbar'),
       backBtn: document.getElementById('backBtn'),
       wordCount: document.getElementById('wordCount'),
-      continueBanner: document.getElementById('continueBanner'),
       focusRestore: document.getElementById('focusRestore'),
       presetTrack: document.getElementById('presetTrack'),
       presetDots: document.getElementById('presetDots'),
@@ -164,7 +176,6 @@
       currentTextColor: 'default',
       toolbarTimer: null,
       gestureHintTimer: null,
-      scrollSaveTimer: null,
       statusTimer: null,
       dragStartX: 0,
       dragCurrentX: 0,
@@ -189,78 +200,9 @@
     let ttsQueue = [];
     let ttsUtterance = null;
     let ttsHeartbeatInterval = null;
-    let debounceSaveTimer = null;
+    let editDebounceTimer = null;
     let lastActiveElement = null;
     let activeRenderId = 0;
-
-    // ===== Storage with Quota Handling & Robust Exception Trapping =====
-    const storage = {
-      get(key, fallback = '') {
-        try {
-          if (!window.localStorage) return fallback;
-          const value = window.localStorage.getItem(key);
-          return value === null ? fallback : value;
-        } catch (err) {
-          console.warn('Unable to read reader storage.', err);
-          return fallback;
-        }
-      },
-      set(key, value) {
-        try {
-          if (!window.localStorage) return false;
-          window.localStorage.setItem(key, String(value));
-          return true;
-        } catch (err) {
-          console.warn('Unable to save reader storage.', err);
-          if (err.name === 'QuotaExceededError' || err.code === 22) {
-             showStatus('Storage limit reached. Edits might not be permanently saved.', 'error');
-          } else {
-             showStatus('Storage saving unavailable in this session.', 'info');
-          }
-          return false;
-        }
-      },
-      remove(key) {
-        try {
-          if (!window.localStorage) return false;
-          window.localStorage.removeItem(key);
-          return true;
-        } catch (err) {
-          console.warn('Unable to remove reader storage.', err);
-          return false;
-        }
-      },
-      number(key, fallback = 0) {
-        const value = Number.parseFloat(this.get(key, String(fallback)), 10);
-        return Number.isFinite(value) ? value : fallback;
-      }
-    };
-
-    function shouldRememberDocument() {
-      return Boolean(els.rememberInput && els.rememberInput.checked);
-    }
-
-    function setRememberDocument(remember) {
-      if (els.rememberInput) els.rememberInput.checked = Boolean(remember);
-      storage.set(STORAGE_KEYS.remember, remember ? 'true' : 'false');
-      if (!remember) {
-        storage.remove(STORAGE_KEYS.text);
-        storage.set(STORAGE_KEYS.scroll, 0);
-        if (els.continueBanner) els.continueBanner.classList.remove('show');
-      }
-    }
-
-    function persistCurrentText() {
-      if (!shouldRememberDocument()) {
-        storage.remove(STORAGE_KEYS.text);
-        return true;
-      }
-      return storage.set(STORAGE_KEYS.text, state.currentText);
-    }
-
-    function showDocumentStorageWarning(prefix = 'Save failed') {
-      showStatus(`${prefix}. Your document remains open in this session, but it could not be saved to browser storage.`, 'error');
-    }
 
     // ===== Status & Loader UI Functions =====
     function updateStatusTarget(target, message, type) {
@@ -470,14 +412,13 @@
       if (!preset) return;
 
       state.currentPresetIndex = safeIndex;
-      setFont(preset.font, options.save);
-      setTheme(preset.theme, options.save);
-      setTextColor(preset.color, options.save);
+      setFont(preset.font);
+      setTheme(preset.theme);
+      setTextColor(preset.color);
       setTrackPosition(safeIndex, options.animate !== false);
       updateDots();
       updatePresetA11y();
 
-      if (options.save !== false) storage.set(STORAGE_KEYS.presetIndex, safeIndex);
       if (options.resetTimer !== false) resetToolbarTimer();
     }
 
@@ -497,7 +438,6 @@
 
     function setMode(mode, options = {}) {
       state.currentMode = mode === 'dark' ? 'dark' : 'light';
-      if (options.save !== false) storage.set(STORAGE_KEYS.mode, state.currentMode);
 
       if (els.modeLight) els.modeLight.classList.toggle('active', state.currentMode === 'light');
       if (els.modeDark) els.modeDark.classList.toggle('active', state.currentMode === 'dark');
@@ -508,12 +448,11 @@
       buildPresetCarousel(selectedIndex);
       applyPreset(state.currentPresetIndex, {
         animate: false,
-        save: options.save,
         resetTimer: options.resetTimer
       });
     }
 
-    function setFont(font, save) {
+    function setFont(font) {
       if (!VALID_FONTS.has(font)) font = 'sans';
       const cfg = fontMap[font];
       if (!cfg) return;
@@ -521,22 +460,19 @@
       ensureFontLoaded(font);
       document.documentElement.style.setProperty('--body-font', cfg.family);
       document.documentElement.style.setProperty('--heading-weight', cfg.weight);
-      if (save !== false) storage.set(STORAGE_KEYS.font, font);
     }
 
-    function setTheme(theme, save) {
+    function setTheme(theme) {
       if (!VALID_THEMES.has(theme)) theme = 'claude';
       Array.from(document.body.classList)
         .filter(className => className.startsWith('theme-'))
         .forEach(className => document.body.classList.remove(className));
       document.body.classList.add(`theme-${theme}`);
-      if (save !== false) storage.set(STORAGE_KEYS.theme, theme);
     }
 
-    function setTextColor(color, save) {
+    function setTextColor(color) {
       state.currentTextColor = color || 'default';
       applyTextColor(state.currentTextColor);
-      if (save !== false) storage.set(STORAGE_KEYS.textColor, state.currentTextColor);
     }
 
     function applyTextColor(color) {
@@ -550,7 +486,7 @@
       }
     }
 
-    function setSize(size, save) {
+    function setSize(size) {
       if (!els.readerContent) return;
       const nextSize = VALID_SIZES.has(size) ? size : 'medium';
       els.readerContent.classList.remove('fs-small', 'fs-medium', 'fs-large', 'fs-xl');
@@ -562,7 +498,6 @@
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
 
-      if (save !== false) storage.set(STORAGE_KEYS.size, nextSize);
     }
 
     // ===== Core Sanitization & Markdown Parser =====
@@ -923,10 +858,7 @@
         select.appendChild(opt);
       });
 
-      const savedVoiceURI = storage.get('reader_voice_uri', '');
-      if (savedVoiceURI && sortedVoices.some(v => v.voiceURI === savedVoiceURI)) {
-        select.value = savedVoiceURI;
-      } else if (currentSelection && sortedVoices.some(v => v.voiceURI === currentSelection)) {
+      if (currentSelection && sortedVoices.some(v => v.voiceURI === currentSelection)) {
         select.value = currentSelection;
       } else {
         const defaultVoice = sortedVoices.find(v => v.default) || sortedVoices.find(v => v.lang.startsWith('en'));
@@ -1305,7 +1237,7 @@
 
         const text = await readSelectedFile(file, extension);
         hideLoader();
-        loadTextFlow(text, false);
+        loadTextFlow(text);
       } catch (err) {
         hideLoader();
         showStatus(`Failed to read "${file.name}": ${formatError(err)}`, 'error');
@@ -1318,46 +1250,17 @@
     function toggleClearBtn() {
       if (!els.clearBtn || !els.pasteArea) return;
       const hasInputText = Boolean(els.pasteArea.value.trim());
-      const hasSavedText = Boolean(storage.get(STORAGE_KEYS.text, '').trim());
-      els.clearBtn.style.display = hasInputText || hasSavedText ? 'block' : 'none';
+      els.clearBtn.style.display = hasInputText ? 'block' : 'none';
     }
 
     function clearText() {
       state.currentText = '';
       if (els.pasteArea) els.pasteArea.value = '';
-      const removedText = storage.remove(STORAGE_KEYS.text);
-      const resetScroll = storage.set(STORAGE_KEYS.scroll, 0);
-      if (els.continueBanner) els.continueBanner.classList.remove('show');
       toggleClearBtn();
-      if (removedText && resetScroll) {
-        showStatus('Saved text cleared successfully.', 'success');
-      } else {
-        showStatus('Text cleared from this session, but browser storage could not be fully updated.', 'error');
-      }
+      showStatus('Text cleared from this session.', 'success');
     }
 
-    function restoreLast() {
-      const saved = storage.get(STORAGE_KEYS.text, '');
-      if (els.continueBanner) els.continueBanner.classList.remove('show');
-
-      if (!saved.trim()) {
-        showStatus('No saved reader document was found.', 'error');
-        return;
-      }
-
-      if (els.pasteArea) els.pasteArea.value = saved;
-      setRememberDocument(true);
-      toggleClearBtn();
-      loadTextFlow(saved, true);
-    }
-
-    function dismissContinue() {
-      if (els.continueBanner) els.continueBanner.classList.remove('show');
-      toggleClearBtn();
-      showStatus('Continue prompt dismissed. Saved text remains available.', 'info');
-    }
-
-    function loadTextFlow(text, isRestore = false) {
+    function loadTextFlow(text) {
       if (!text || !text.trim()) {
         showStatus('Provide text input or upload a file first.', 'error');
         return;
@@ -1373,15 +1276,12 @@
 
       clearStatus();
       state.currentText = safeText;
-      const textSaved = persistCurrentText();
-      if (!isRestore && shouldRememberDocument()) storage.set(STORAGE_KEYS.scroll, 0);
-      if (!textSaved) showDocumentStorageWarning('Document loaded, but save failed');
       renderTextAsync(state.currentText, enterReader);
     }
 
     function loadFromPaste() {
       if (els.pasteArea) {
-        loadTextFlow(els.pasteArea.value, false);
+        loadTextFlow(els.pasteArea.value);
       }
     }
 
@@ -1439,8 +1339,7 @@
       resetToolbarTimer();
 
       setTimeout(() => {
-        const savedScroll = storage.number(STORAGE_KEYS.scroll, 0);
-        window.scrollTo(0, Math.max(savedScroll, 0));
+        window.scrollTo(0, 0);
       }, 50);
     }
 
@@ -1542,21 +1441,12 @@
 
       const editedText = els.readerContent.innerText || '';
       state.currentText = editedText;
-      const textSaved = persistCurrentText();
 
       // Re-compile raw markdown back into safe HTML blocks
       renderTextAsync(state.currentText, () => {
         scheduleWordCountUpdate();
-        if (!shouldRememberDocument()) {
-          announceLive('Changes kept for this session. Reading mode restored.');
-          showStatus('Edits kept for this session.', 'success');
-        } else if (textSaved) {
-          announceLive('Changes saved. Reading mode restored.');
-          showStatus('All edits successfully saved to memory.', 'success');
-        } else {
-          announceLive('Save failed. Reading mode restored with edits kept for this session.');
-          showDocumentStorageWarning('Save failed');
-        }
+        announceLive('Changes kept for this session. Reading mode restored.');
+        showStatus('Edits kept for this session.', 'success');
       });
     }
 
@@ -1803,8 +1693,6 @@
 
     // ===== Safe DOM Event Bindings =====
     function bindEvents() {
-      if (els.continueBtn) els.continueBtn.addEventListener('click', restoreLast);
-      if (els.dismissBtn) els.dismissBtn.addEventListener('click', dismissContinue);
       if (els.readBtn) els.readBtn.addEventListener('click', loadFromPaste);
       if (els.fileInput) els.fileInput.addEventListener('change', handleFile);
       if (els.clearBtn) els.clearBtn.addEventListener('click', clearText);
@@ -1866,13 +1754,6 @@
         const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
         const scrolled = height > 0 ? (winScroll / height) * 100 : 0;
         els.progressBar.style.width = `${scrolled}%`;
-
-        window.clearTimeout(state.scrollSaveTimer);
-        state.scrollSaveTimer = window.setTimeout(() => {
-          if (shouldRememberDocument()) {
-            storage.set(STORAGE_KEYS.scroll, Math.round(winScroll));
-          }
-        }, 250);
       }, { passive: true });
 
       if (els.inputView) {
@@ -1897,18 +1778,6 @@
         els.pasteArea.addEventListener('input', () => {
           toggleClearBtn();
           clearStatus();
-        });
-      }
-
-      if (els.rememberInput) {
-        els.rememberInput.addEventListener('change', () => {
-          setRememberDocument(els.rememberInput.checked);
-          if (els.rememberInput.checked && state.currentText) {
-            const textSaved = persistCurrentText();
-            if (!textSaved) showDocumentStorageWarning('Remember setting enabled, but save failed');
-          } else if (!els.rememberInput.checked) {
-            showStatus('Document memory disabled for this browser.', 'info');
-          }
         });
       }
 
@@ -2028,7 +1897,6 @@
           const val = clampNumber(els.lineHeightInput.value, 1.85, 1.4, 2.6);
           els.lineHeightInput.value = val;
           if (els.readerContent) els.readerContent.style.lineHeight = val;
-          storage.set('reader_lineheight', val);
         });
       }
 
@@ -2037,7 +1905,6 @@
           const val = clampNumber(els.letterSpacingInput.value, -0.015, -0.03, 0.15);
           els.letterSpacingInput.value = val;
           if (els.readerContent) els.readerContent.style.letterSpacing = `${val}em`;
-          storage.set('reader_letterspacing', val);
         });
       }
 
@@ -2046,14 +1913,12 @@
           const val = clampNumber(els.marginInput.value, 24, 12, 80);
           els.marginInput.value = val;
           updateMarginStyle(val);
-          storage.set('reader_margin', val);
         });
       }
 
       if (els.smartHeadingsInput) {
         els.smartHeadingsInput.addEventListener('change', () => {
           state.smartHeadings = els.smartHeadingsInput.checked;
-          storage.set(STORAGE_KEYS.smartHeadings, state.smartHeadings ? 'true' : 'false');
           announceLive(`Smart headings ${state.smartHeadings ? 'enabled' : 'disabled'}.`);
 
           if (state.currentText && els.readerView && els.readerView.classList.contains('active') && !state.isEditing) {
@@ -2077,14 +1942,7 @@
           const val = clampNumber(els.voiceRateInput.value, 1.0, 0.5, 2.5);
           els.voiceRateInput.value = val;
           els.voiceRateVal.textContent = `${val.toFixed(1)}x`;
-          storage.set('reader_voice_rate', val);
           announceLive(`Speech speed changed to ${val.toFixed(1)}x.`);
-        });
-      }
-
-      if (els.voiceSelect) {
-        els.voiceSelect.addEventListener('change', () => {
-          storage.set('reader_voice_uri', els.voiceSelect.value);
         });
       }
 
@@ -2094,7 +1952,6 @@
           els.scrollSpeedInput.value = val;
           autoScrollSpeed = val;
           els.scrollSpeedVal.textContent = `${(val / 0.04).toFixed(1)}x`;
-          storage.set('reader_scroll_speed', val);
           announceLive(`Auto-scroll speed changed to ${(val / 0.04).toFixed(1)}x.`);
         });
       }
@@ -2111,70 +1968,51 @@
         els.readerContent.addEventListener('input', () => {
           if (!state.isEditing) return;
 
-          window.clearTimeout(debounceSaveTimer);
-          debounceSaveTimer = window.setTimeout(() => {
+          window.clearTimeout(editDebounceTimer);
+          editDebounceTimer = window.setTimeout(() => {
             const text = els.readerContent.innerText || '';
             state.currentText = text;
-            const textSaved = persistCurrentText();
             scheduleWordCountUpdate();
-            if (!shouldRememberDocument()) {
-              showStatus('Edits kept for this session.', 'success');
-            } else if (textSaved) {
-              showStatus('Edits autosaved locally.', 'success');
-            } else {
-              showDocumentStorageWarning('Autosave failed');
-            }
+            showStatus('Edits kept for this session.', 'success');
           }, 1000);
         });
       }
     }
 
     function init() {
+      cleanupLegacyBrowserStorage();
       bindEvents();
 
-      const savedText = storage.get(STORAGE_KEYS.text, '');
-      const savedRemember = storage.get(STORAGE_KEYS.remember, 'false') === 'true' || Boolean(savedText.trim());
-      if (els.rememberInput) els.rememberInput.checked = savedRemember;
-      if (savedText.trim() && els.continueBanner) els.continueBanner.classList.add('show');
-
-      state.smartHeadings = storage.get(STORAGE_KEYS.smartHeadings, 'true') !== 'false';
+      state.smartHeadings = true;
       if (els.smartHeadingsInput) els.smartHeadingsInput.checked = state.smartHeadings;
 
-      const savedMode = storage.get(STORAGE_KEYS.mode, '');
-      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const initialMode = savedMode || (prefersDark ? 'dark' : 'light');
-      const savedPresetIndex = storage.number(STORAGE_KEYS.presetIndex, 0);
-      setMode(initialMode, { save: false, presetIndex: savedPresetIndex, resetTimer: false });
+      setMode('light', { presetIndex: 0, resetTimer: false });
 
-      setSize(storage.get(STORAGE_KEYS.size, 'medium'), false);
+      setSize('medium');
       toggleClearBtn();
       if (els.toolbar) setContainerFocusable(els.toolbar, false);
 
-      // Load saved typography sliders
-      const savedLineHeight = clampNumber(storage.get('reader_lineheight', '1.85'), 1.85, 1.4, 2.6);
-      if (els.lineHeightInput) els.lineHeightInput.value = savedLineHeight;
-      if (els.readerContent) els.readerContent.style.lineHeight = savedLineHeight;
+      const defaultLineHeight = 1.85;
+      if (els.lineHeightInput) els.lineHeightInput.value = defaultLineHeight;
+      if (els.readerContent) els.readerContent.style.lineHeight = defaultLineHeight;
 
-      const savedLetterSpacing = clampNumber(storage.get('reader_letterspacing', '-0.015'), -0.015, -0.03, 0.15);
-      if (els.letterSpacingInput) els.letterSpacingInput.value = savedLetterSpacing;
-      if (els.readerContent) els.readerContent.style.letterSpacing = `${savedLetterSpacing}em`;
+      const defaultLetterSpacing = -0.015;
+      if (els.letterSpacingInput) els.letterSpacingInput.value = defaultLetterSpacing;
+      if (els.readerContent) els.readerContent.style.letterSpacing = `${defaultLetterSpacing}em`;
 
-      const savedMargin = clampNumber(storage.get('reader_margin', '24'), 24, 12, 80);
-      if (els.marginInput) els.marginInput.value = savedMargin;
-      updateMarginStyle(savedMargin);
+      const defaultMargin = 24;
+      if (els.marginInput) els.marginInput.value = defaultMargin;
+      updateMarginStyle(defaultMargin);
 
-      // Load saved TTS speed
-      const savedVoiceRate = clampNumber(storage.get('reader_voice_rate', '1.0'), 1.0, 0.5, 2.5);
-      if (els.voiceRateInput) els.voiceRateInput.value = savedVoiceRate;
-      if (els.voiceRateVal) els.voiceRateVal.textContent = `${savedVoiceRate.toFixed(1)}x`;
+      const defaultVoiceRate = 1.0;
+      if (els.voiceRateInput) els.voiceRateInput.value = defaultVoiceRate;
+      if (els.voiceRateVal) els.voiceRateVal.textContent = `${defaultVoiceRate.toFixed(1)}x`;
 
-      // Load saved Auto-Scroll speed
-      const savedScrollSpeed = clampNumber(storage.get('reader_scroll_speed', '0.04'), 0.04, 0.01, 0.2);
-      if (els.scrollSpeedInput) els.scrollSpeedInput.value = savedScrollSpeed;
-      autoScrollSpeed = savedScrollSpeed;
+      const defaultScrollSpeed = 0.04;
+      if (els.scrollSpeedInput) els.scrollSpeedInput.value = defaultScrollSpeed;
+      autoScrollSpeed = defaultScrollSpeed;
       if (els.scrollSpeedVal) els.scrollSpeedVal.textContent = `${(autoScrollSpeed / 0.04).toFixed(1)}x`;
 
-      // Initialize speech synthesizers
       if ('speechSynthesis' in window) {
         window.speechSynthesis.onvoiceschanged = populateVoices;
         populateVoices();
