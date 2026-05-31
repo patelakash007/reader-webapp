@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'reader-webapp-shell-v2';
+const CACHE_NAME = 'reader-webapp-shell-v3';
 const APP_SHELL = [
   './',
   './index.html',
@@ -23,6 +23,9 @@ const SHELL_URLS = new Set(APP_SHELL.map(path => {
   return url.href;
 }));
 
+const ROOT_URL = new URL('./', self.registration.scope).href;
+const INDEX_URL = new URL('./index.html', self.registration.scope).href;
+
 function normalizeRequestUrl(request) {
   const url = new URL(request.url);
   url.hash = '';
@@ -34,6 +37,18 @@ function isShellRequest(request) {
   if (request.method !== 'GET') return false;
   if (new URL(request.url).origin !== self.location.origin) return false;
   return SHELL_URLS.has(normalizeRequestUrl(request));
+}
+
+function isShellNavigationRequest(request) {
+  if (request.method !== 'GET') return false;
+  if (new URL(request.url).origin !== self.location.origin) return false;
+  const url = normalizeRequestUrl(request);
+  return url === ROOT_URL || url === INDEX_URL;
+}
+
+function isHtmlResponse(response) {
+  const contentType = response.headers.get('content-type') || '';
+  return contentType.toLowerCase().includes('text/html');
 }
 
 async function networkFirst(request) {
@@ -58,12 +73,12 @@ async function navigationResponse(request) {
 
   try {
     const response = await fetch(request, { cache: 'no-cache' });
-    if (response && response.ok) {
-      await cache.put(new URL('./index.html', self.registration.scope).href, response.clone());
+    if (response && response.ok && isShellNavigationRequest(request) && isHtmlResponse(response)) {
+      await cache.put(INDEX_URL, response.clone());
     }
     return response;
   } catch (err) {
-    return await cache.match('./index.html') || cache.match('./');
+    return await cache.match(INDEX_URL) || cache.match(ROOT_URL);
   }
 }
 

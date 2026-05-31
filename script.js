@@ -204,6 +204,12 @@
     let lastActiveElement = null;
     let activeRenderId = 0;
 
+    function clearEditDebounceTimer() {
+      if (!editDebounceTimer) return;
+      window.clearTimeout(editDebounceTimer);
+      editDebounceTimer = null;
+    }
+
     // ===== Status & Loader UI Functions =====
     function updateStatusTarget(target, message, type) {
       if (!target) return;
@@ -1194,26 +1200,52 @@
       }
 
       const typedArray = new Uint8Array(arrayBuffer);
-      const pdf = await pdfLib.getDocument({ data: typedArray }).promise;
-      if (pdf.numPages > MAX_PDF_PAGES) {
-        throw new Error(`This PDF has ${pdf.numPages} pages. Limit is ${MAX_PDF_PAGES} pages for browser processing.`);
-      }
-      const pages = [];
-      let totalTextLength = 0;
+      const loadingTask = pdfLib.getDocument({ data: typedArray });
+      let pdf = null;
 
-      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
-        showLoader(`Reading page ${pageNumber} of ${pdf.numPages}...`);
-        const page = await pdf.getPage(pageNumber);
-        const content = await page.getTextContent();
-        const pageText = extractPdfPageText(content.items);
-        totalTextLength += pageText.length;
-        if (totalTextLength > MAX_EXTRACTED_TEXT_CHARS) {
-          throw new Error(`This PDF contains too much extracted text for the browser reader. Limit is ${MAX_EXTRACTED_TEXT_CHARS.toLocaleString()} characters.`);
+      try {
+        pdf = await loadingTask.promise;
+        if (pdf.numPages > MAX_PDF_PAGES) {
+          throw new Error(`This PDF has ${pdf.numPages} pages. Limit is ${MAX_PDF_PAGES} pages for browser processing.`);
         }
-        pages.push(pageText);
-      }
+        const pages = [];
+        let totalTextLength = 0;
 
-      return pages.join('\n\n').trim();
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+          showLoader(`Reading page ${pageNumber} of ${pdf.numPages}...`);
+          let page = null;
+          try {
+            page = await pdf.getPage(pageNumber);
+            const content = await page.getTextContent();
+            const pageText = extractPdfPageText(content.items);
+            totalTextLength += pageText.length;
+            if (totalTextLength > MAX_EXTRACTED_TEXT_CHARS) {
+              throw new Error(`This PDF contains too much extracted text for the browser reader. Limit is ${MAX_EXTRACTED_TEXT_CHARS.toLocaleString()} characters.`);
+            }
+            pages.push(pageText);
+          } finally {
+            if (page && typeof page.cleanup === 'function') {
+              try {
+                page.cleanup();
+              } catch (cleanupErr) {
+                console.warn('Unable to clean up PDF page resources.', cleanupErr);
+              }
+            }
+          }
+        }
+
+        return pages.join('\n\n').trim();
+      } finally {
+        try {
+          if (pdf && typeof pdf.destroy === 'function') {
+            await pdf.destroy();
+          } else if (loadingTask && typeof loadingTask.destroy === 'function') {
+            await loadingTask.destroy();
+          }
+        } catch (cleanupErr) {
+          console.warn('Unable to fully clean up PDF resources.', cleanupErr);
+        }
+      }
     }
 
     async function extractDocxText(arrayBuffer) {
@@ -1351,6 +1383,7 @@
         els.mobileFab.setAttribute('aria-expanded', 'false');
         els.mobileFab.setAttribute('aria-label', 'Toggle Reading Settings');
       }
+      setSettingsDrawerOpen(false);
       
       state.focusMode = false;
       if (els.toolbar) setContainerFocusable(els.toolbar, false);
@@ -1386,14 +1419,22 @@
     }
 
     // ===== Settings drawer bindings =====
+    function setSettingsDrawerOpen(open) {
+      const expanded = Boolean(open);
+      if (els.settingsDrawer) {
+        els.settingsDrawer.classList.toggle('active', expanded);
+      }
+      if (els.settingsBtn) {
+        els.settingsBtn.classList.toggle('active', expanded);
+        els.settingsBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        els.settingsBtn.setAttribute('aria-label', expanded ? 'Close Reading Settings' : 'Open Reading Settings');
+        els.settingsBtn.setAttribute('title', expanded ? 'Close Reading Settings' : 'Open Reading Settings');
+      }
+    }
+
     function toggleSettingsDrawer() {
       if (!els.settingsDrawer || !els.settingsBtn) return;
-      els.settingsDrawer.classList.toggle('active');
-      const expanded = els.settingsDrawer.classList.contains('active');
-      els.settingsBtn.classList.toggle('active', expanded);
-      els.settingsBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-      els.settingsBtn.setAttribute('aria-label', expanded ? 'Close Reading Settings' : 'Open Reading Settings');
-      els.settingsBtn.setAttribute('title', expanded ? 'Close Reading Settings' : 'Open Reading Settings');
+      setSettingsDrawerOpen(!els.settingsDrawer.classList.contains('active'));
     }
 
     function toggleMobileSheet() {
@@ -1426,11 +1467,7 @@
         els.mobileFab.setAttribute('aria-label', 'Toggle Reading Settings');
         els.mobileFab.setAttribute('aria-expanded', 'false');
       }
-      if (els.settingsDrawer) els.settingsDrawer.classList.remove('active');
-      if (els.settingsBtn) {
-        els.settingsBtn.classList.remove('active');
-        els.settingsBtn.setAttribute('aria-expanded', 'false');
-      }
+      setSettingsDrawerOpen(false);
     }
 
     // ===== In-Context Inline Content Editor =====
@@ -1446,6 +1483,7 @@
       if (!els.readerContent || !els.editingBanner || !els.editBtn) return;
       if (isSpeaking) stopTTS();
       if (isAutoScrolling) toggleAutoScroll();
+      clearEditDebounceTimer();
 
       state.isEditing = true;
       
@@ -1469,6 +1507,7 @@
 
     function saveAndExitEditMode() {
       if (!els.readerContent || !els.editingBanner || !els.editBtn) return;
+      clearEditDebounceTimer();
       state.isEditing = false;
       els.readerContent.setAttribute('contenteditable', 'false');
       els.readerContent.removeAttribute('role');
@@ -2041,6 +2080,7 @@
           editDebounceTimer = window.setTimeout(() => {
             const text = els.readerContent.innerText || '';
             state.currentText = text;
+            editDebounceTimer = null;
             scheduleWordCountUpdate();
             showStatus('Edits kept for this session.', 'success');
           }, 1000);
