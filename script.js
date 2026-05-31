@@ -582,10 +582,11 @@
     }
 
     // High performance asynchronous chunked parser. Prevents layout thrashing on huge documents.
-    function renderTextAsync(text, onComplete) {
+    function renderTextAsync(text, onComplete, options = {}) {
       if (!els.readerContent) return;
       const renderId = ++activeRenderId;
-      showLoader('Preparing reader...');
+      const shouldShowLoader = !options.suppressLoader;
+      if (shouldShowLoader) showLoader('Preparing reader...');
       els.readerContent.textContent = '';
 
       setTimeout(() => {
@@ -729,11 +730,11 @@
             flushParts();
             if (renderId !== activeRenderId) return;
             applyTextColor(state.currentTextColor);
-            hideLoader();
+            if (shouldShowLoader) hideLoader();
             if (onComplete) onComplete();
           } catch (err) {
             if (renderId !== activeRenderId) return;
-            hideLoader();
+            if (shouldShowLoader) hideLoader();
             showStatus(`Could not render this text safely: ${formatError(err)}`, 'error');
           }
         }
@@ -745,7 +746,7 @@
     function getReaderTextForCounting() {
       if (!els.readerContent) return '';
       if (state.isEditing) {
-        return els.readerContent.innerText || els.readerContent.textContent || '';
+        return els.readerContent.textContent || '';
       }
 
       const blocks = els.readerContent.querySelectorAll('h1, h2, h3, p, li, blockquote, pre');
@@ -1390,7 +1391,7 @@
         hideLoader();
         showStatus(`Failed to read "${file.name}": ${formatError(err)}`, 'error');
       } finally {
-        if (isActiveFileRead(readToken) && target && 'value' in target) target.value = '';
+        if (target && 'value' in target) target.value = '';
       }
     }
 
@@ -1440,7 +1441,8 @@
     function goBack() {
       cancelPendingFileRead();
       if (state.isEditing) {
-        saveAndExitEditMode();
+        saveAndExitEditMode({ suppressRenderLoader: true });
+        hideLoader();
       }
       if (isSpeaking) stopTTS();
       if (isAutoScrolling) toggleAutoScroll();
@@ -1465,6 +1467,7 @@
       resetSettingsDrawer();
       
       state.focusMode = false;
+      document.body.classList.remove('focus-mode-active');
       if (els.toolbar) setContainerFocusable(els.toolbar, false);
       if (els.pasteArea) els.pasteArea.value = state.currentText;
       toggleClearBtn();
@@ -1489,6 +1492,7 @@
       resetSettingsDrawer();
       
       state.focusMode = false;
+      document.body.classList.remove('focus-mode-active');
       if (els.toolbar) setContainerFocusable(els.toolbar, true);
       scheduleWordCountUpdate();
       resetToolbarTimer();
@@ -1563,6 +1567,8 @@
 
     function enterEditMode() {
       if (!els.readerContent || !els.editingBanner || !els.editBtn) return;
+      activeRenderId += 1;
+      hideLoader();
       if (isSpeaking) stopTTS();
       if (isAutoScrolling) toggleAutoScroll();
 
@@ -1592,7 +1598,7 @@
       announceLive('Editing mode activated. Focus moved to raw reader text.');
     }
 
-    function saveAndExitEditMode() {
+    function saveAndExitEditMode(options = {}) {
       if (!els.readerContent || !els.editingBanner || !els.editBtn) return;
       window.clearTimeout(editDebounceTimer);
       editDebounceTimer = null;
@@ -1616,7 +1622,7 @@
         scheduleWordCountUpdate();
         announceLive('Changes kept for this session. Reading mode restored.');
         showStatus('Edits kept for this session.', 'success');
-      });
+      }, { suppressLoader: Boolean(options.suppressRenderLoader) });
     }
 
     function insertPlainTextAtSelection(text) {
@@ -1707,6 +1713,7 @@
     function toggleFocus() {
       if (!els.toolbar || !els.backBtn || !els.wordCount || !els.focusRestore || !els.focusBtn) return;
       state.focusMode = !state.focusMode;
+      document.body.classList.toggle('focus-mode-active', state.focusMode);
 
       if (state.focusMode) {
         els.toolbar.classList.add('force-hidden');
@@ -2221,12 +2228,18 @@
     function registerServiceWorker() {
       if (!('serviceWorker' in navigator)) return;
 
-      window.addEventListener('load', () => {
+      const register = () => {
         navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
           .catch(err => {
             console.warn('Service worker registration failed.', err);
           });
-      });
+      };
+
+      if (document.readyState === 'complete') {
+        register();
+      } else {
+        window.addEventListener('load', register, { once: true });
+      }
     }
 
     function init() {
