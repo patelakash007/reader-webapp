@@ -1,4 +1,5 @@
 $ErrorActionPreference = 'Stop'
+$projectRoot = Split-Path -Parent $PSScriptRoot
 
 $requiredPaths = @(
   'manifest.webmanifest',
@@ -15,7 +16,9 @@ $requiredPaths = @(
   'icons/maskable-512.png'
 )
 
-$missing = $requiredPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }
+$missing = $requiredPaths | Where-Object {
+  -not (Test-Path -LiteralPath (Join-Path $projectRoot $_) -PathType Leaf)
+}
 
 if ($missing.Count -gt 0) {
   Write-Error ("Missing required PWA files: " + ($missing -join ', '))
