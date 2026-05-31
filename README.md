@@ -85,6 +85,17 @@ Opening `index.html` directly may work for pasted text, TXT, and Markdown, but b
 
 On supported browsers, open Reader Webapp from GitHub Pages or a local server, then use the browser's Install app option. The PWA service worker caches only static app files so the app shell can reload offline after the first visit.
 
+## Testing checklist
+
+For manual smoke testing, use `http://localhost:8080/` or the GitHub Pages URL. Service worker and PWA behavior should be tested from localhost or GitHub Pages, not by opening `index.html` directly.
+
+- Paste text into the reader.
+- Upload TXT, Markdown, PDF, and DOCX files.
+- Try reader controls such as theme, typography, spacing, width, and text-to-speech.
+- Install the PWA from a supported browser.
+- After the first visit, reload the app while offline and confirm the app shell still opens.
+- Confirm documents, pasted text, reading state, and preferences are not persisted after reload.
+
 ## Privacy notes
 
 Reader Webapp is designed to keep reading local-first. Documents are opened and processed inside the browser where possible, and PDF/DOCX parser libraries are bundled locally in this repo.
