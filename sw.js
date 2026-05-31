@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'reader-webapp-shell-v1';
+const CACHE_NAME = 'reader-webapp-shell-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -36,23 +36,33 @@ function isShellRequest(request) {
   return SHELL_URLS.has(normalizeRequestUrl(request));
 }
 
-async function cacheFirst(request) {
+async function networkFirst(request) {
   const cache = await caches.open(CACHE_NAME);
-  const cached = await cache.match(normalizeRequestUrl(request));
-  if (cached) return cached;
+  const cacheKey = normalizeRequestUrl(request);
 
-  const response = await fetch(request);
-  if (response && response.ok && isShellRequest(request)) {
-    await cache.put(normalizeRequestUrl(request), response.clone());
+  try {
+    const response = await fetch(request, { cache: 'no-cache' });
+    if (response && response.ok && isShellRequest(request)) {
+      await cache.put(cacheKey, response.clone());
+    }
+    return response;
+  } catch (err) {
+    const cached = await cache.match(cacheKey);
+    if (cached) return cached;
+    throw err;
   }
-  return response;
 }
 
 async function navigationResponse(request) {
+  const cache = await caches.open(CACHE_NAME);
+
   try {
-    return await fetch(request);
+    const response = await fetch(request, { cache: 'no-cache' });
+    if (response && response.ok) {
+      await cache.put(new URL('./index.html', self.registration.scope).href, response.clone());
+    }
+    return response;
   } catch (err) {
-    const cache = await caches.open(CACHE_NAME);
     return await cache.match('./index.html') || cache.match('./');
   }
 }
@@ -60,7 +70,7 @@ async function navigationResponse(request) {
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(APP_SHELL);
+    await cache.addAll(APP_SHELL.map(path => new Request(path, { cache: 'reload' })));
     await self.skipWaiting();
   })());
 });
@@ -84,6 +94,6 @@ self.addEventListener('fetch', event => {
   }
 
   if (isShellRequest(request)) {
-    event.respondWith(cacheFirst(request));
+    event.respondWith(networkFirst(request));
   }
 });

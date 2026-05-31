@@ -1492,6 +1492,32 @@
       });
     }
 
+    function insertPlainTextAtSelection(text) {
+      if (!text || !els.readerContent) return;
+      const selection = window.getSelection ? window.getSelection() : null;
+      if (!selection || selection.rangeCount === 0 || !els.readerContent.contains(selection.anchorNode)) {
+        els.readerContent.appendChild(document.createTextNode(text));
+        return;
+      }
+
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      const textNode = document.createTextNode(text);
+      range.insertNode(textNode);
+      range.setStartAfter(textNode);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    function handlePlainTextEditPaste(event) {
+      if (!state.isEditing || !els.readerContent || event.currentTarget !== els.readerContent) return;
+      event.preventDefault();
+      const clipboard = event.clipboardData || window.clipboardData;
+      const text = clipboard ? clipboard.getData('text/plain') : '';
+      insertPlainTextAtSelection(text);
+    }
+
     function announceLive(msg) {
       let live = document.getElementById('liveAnnouncer');
       if (!live) {
@@ -1787,6 +1813,7 @@
       if (els.arrowRight) els.arrowRight.addEventListener('click', nextPreset);
 
       if (els.readerContent) attachGestureArea(els.readerContent);
+      if (els.readerContent) els.readerContent.addEventListener('paste', handlePlainTextEditPaste);
       if (els.wordCount) attachGestureArea(els.wordCount);
 
       window.addEventListener('scroll', () => {
@@ -2025,7 +2052,7 @@
       if (!('serviceWorker' in navigator)) return;
 
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
+        navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
           .catch(err => {
             console.warn('Service worker registration failed.', err);
           });
