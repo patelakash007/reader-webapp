@@ -19,6 +19,7 @@ https://patelakash007.github.io/reader-webapp/
 - Typography presets for comfortable long-form reading
 - Text-to-speech support for listening while reading
 - Local-first design: files are processed in the browser
+- Installable PWA support on supported browsers
 - Non-persistent sessions: documents, reading state, and preferences reset on reload
 - PDF/DOCX parser libraries are bundled locally
 - Mobile-friendly layout for phone reading
@@ -35,6 +36,13 @@ reader-webapp/
 ├── index.html
 ├── style.css
 ├── script.js
+├── manifest.webmanifest
+├── sw.js
+├── icons/
+│   ├── icon-192.png
+│   ├── icon-512.png
+│   ├── maskable-192.png
+│   └── maskable-512.png
 ├── vendor/
 │   ├── pdf.min.js
 │   ├── pdf.worker.min.js
@@ -73,11 +81,15 @@ http://localhost:8080/
 
 Opening `index.html` directly may work for pasted text, TXT, and Markdown, but browser file restrictions can make PDF/DOCX handling unreliable.
 
+### Install as app
+
+On supported browsers, open Reader Webapp from GitHub Pages or a local server, then use the browser's Install app option. The PWA service worker caches only static app files so the app shell can reload offline after the first visit.
+
 ## Privacy notes
 
 Reader Webapp is designed to keep reading local-first. Documents are opened and processed inside the browser where possible, and PDF/DOCX parser libraries are bundled locally in this repo.
 
-Local-first does not mean zero risk when the app is hosted online, but the app avoids default third-party font requests and processes supported documents in the browser. The app does not persist documents or preferences in browser storage. Avoid pasting sensitive private data into any online-hosted version unless you fully trust the environment and browser session.
+Local-first does not mean zero risk when the app is hosted online, but the app avoids default third-party font requests and processes supported documents in the browser. The app does not persist documents, pasted text, reading state, or preferences in browser storage. PWA offline caching is limited to app shell files such as HTML, CSS, JavaScript, local vendor libraries, the manifest, and icons; uploaded documents and generated downloads are not cached by the app. Avoid pasting sensitive private data into any online-hosted version unless you fully trust the environment and browser session.
 
 ## Development workflow
 
@@ -103,7 +115,6 @@ git push -u origin feature/better-reading-mode
 - Better pasted-article cleanup
 - Improved Markdown rendering
 - Reading progress polish
-- PWA install support
 - More accessibility checks
 - Better mobile toolbar behavior
 
