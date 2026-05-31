@@ -23,7 +23,7 @@ https://patelakash007.github.io/reader-webapp/
 - Non-persistent sessions: documents, reading state, and preferences reset on reload
 - PDF/DOCX parser libraries are bundled locally
 - Mobile-friendly layout for phone reading
-- Single-page app split into `index.html`, `style.css`, and `script.js`
+- Single-page PWA split across `index.html`, `style.css`, `script.js`, `sw.js`, `manifest.webmanifest`, `icons/`, and `vendor/`
 
 ## Why this exists
 
@@ -33,23 +33,28 @@ Modern articles and long AI answers can be hard to read because of ads, bad spac
 
 ```text
 reader-webapp/
-├── index.html
-├── style.css
-├── script.js
-├── manifest.webmanifest
-├── sw.js
-├── icons/
-│   ├── icon-192.png
-│   ├── icon-512.png
-│   ├── maskable-192.png
-│   └── maskable-512.png
-├── vendor/
-│   ├── pdf.min.js
-│   ├── pdf.worker.min.js
-│   └── mammoth.browser.min.js
-├── README.md
-├── LICENSE
-└── .gitignore
+|-- .github/
+|   `-- workflows/
+|       `-- quality-checks.yml
+|-- icons/
+|   |-- icon-192.png
+|   |-- icon-512.png
+|   |-- maskable-192.png
+|   `-- maskable-512.png
+|-- scripts/
+|   `-- validate-pwa.ps1
+|-- vendor/
+|   |-- mammoth.browser.min.js
+|   |-- pdf.min.js
+|   `-- pdf.worker.min.js
+|-- index.html
+|-- style.css
+|-- script.js
+|-- sw.js
+|-- manifest.webmanifest
+|-- README.md
+|-- LICENSE
+`-- .gitignore
 ```
 
 ## How to use

@@ -2,6 +2,7 @@
   "name": "Reader Webapp",
   "short_name": "Reader",
   "description": "local-first reading app for text, Markdown, PDF, and DOCX",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

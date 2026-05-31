@@ -203,6 +203,7 @@
     let editDebounceTimer = null;
     let lastActiveElement = null;
     let activeRenderId = 0;
+    let activeReadToken = 0;
 
     // ===== Status & Loader UI Functions =====
     function updateStatusTarget(target, message, type) {
@@ -262,6 +263,41 @@
 
     function getElementTarget(target) {
       return target instanceof Element ? target : null;
+    }
+
+    function getScrollTop() {
+      return window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    }
+
+    function beginFileRead() {
+      activeReadToken += 1;
+      return activeReadToken;
+    }
+
+    function cancelPendingFileRead() {
+      activeReadToken += 1;
+    }
+
+    function isActiveFileRead(readToken) {
+      return readToken === activeReadToken;
+    }
+
+    function createStaleReadError() {
+      const err = new Error('Stale file read ignored.');
+      err.name = 'StaleFileReadError';
+      return err;
+    }
+
+    function assertActiveFileRead(readToken) {
+      if (!isActiveFileRead(readToken)) throw createStaleReadError();
+    }
+
+    function isStaleReadError(err) {
+      return err && err.name === 'StaleFileReadError';
+    }
+
+    function showReadLoader(readToken, message) {
+      if (isActiveFileRead(readToken)) showLoader(message);
     }
 
     // ===== Presets and Custom Typography Colors =====
@@ -762,7 +798,7 @@
     function updateRulerPosition(e) {
       if (!isRulerActive || !els.readingRuler || !els.readerContent) return;
       const target = getElementTarget(e.target);
-      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const scrollTop = getScrollTop();
       
       if (target && els.readerContent.contains(target) && 
           (target.tagName === 'P' || target.tagName === 'LI' || 
@@ -793,7 +829,8 @@
          scrollAccumulator -= pixelsToScroll;
       }
 
-      const distanceToBottom = document.documentElement.scrollHeight - window.scrollY - window.innerHeight;
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+      const distanceToBottom = document.documentElement.scrollHeight - getScrollTop() - viewportHeight;
       if (distanceToBottom < 1) {
         toggleAutoScroll();
       } else {
@@ -806,7 +843,7 @@
       isAutoScrolling = !isAutoScrolling;
       if (isAutoScrolling) {
         els.autoScrollBtn.classList.add('active');
-        els.autoScrollBtn.innerHTML = '&#x23F8;'; // Pause icon
+        els.autoScrollBtn.innerHTML = '<span aria-hidden="true">&#x23F8;</span>'; // Pause icon
         els.autoScrollBtn.setAttribute('aria-pressed', 'true');
         els.autoScrollBtn.setAttribute('aria-label', 'Stop Auto Scroll');
         els.autoScrollBtn.setAttribute('title', 'Stop Auto Scroll');
@@ -816,7 +853,7 @@
         announceLive('Auto-scroll started.');
       } else {
         els.autoScrollBtn.classList.remove('active');
-        els.autoScrollBtn.innerHTML = '&#x25B6;'; // Play icon
+        els.autoScrollBtn.innerHTML = '<span aria-hidden="true">&#x25B6;</span>'; // Play icon
         els.autoScrollBtn.setAttribute('aria-pressed', 'false');
         els.autoScrollBtn.setAttribute('aria-label', 'Start Auto Scroll');
         els.autoScrollBtn.setAttribute('title', 'Start Auto Scroll');
@@ -905,10 +942,12 @@
         }
       }
 
-      ttsUtterance.onend = () => { playNextTTS(); };
+      ttsUtterance.onend = () => {
+        if (isSpeaking) playNextTTS();
+      };
       ttsUtterance.onerror = (e) => {
          console.error('TTS error', e);
-         playNextTTS();
+         if (isSpeaking) playNextTTS();
       };
       
       window.speechSynthesis.speak(ttsUtterance);
@@ -919,10 +958,15 @@
        isSpeaking = false;
        ttsQueue = [];
        clearTTSHeartbeat();
+       if (ttsUtterance) {
+         ttsUtterance.onend = null;
+         ttsUtterance.onerror = null;
+         ttsUtterance = null;
+       }
        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
        if (els.ttsBtn) {
          els.ttsBtn.classList.remove('active');
-         els.ttsBtn.innerHTML = '&#x1F50A;'; // Sound icon
+         els.ttsBtn.innerHTML = '<span aria-hidden="true">&#x1F50A;</span>'; // Sound icon
          els.ttsBtn.setAttribute('aria-pressed', 'false');
          els.ttsBtn.setAttribute('aria-label', 'Start Read Aloud');
          els.ttsBtn.setAttribute('title', 'Start Read Aloud');
@@ -973,7 +1017,7 @@
            isSpeaking = true;
            if (els.ttsBtn) {
              els.ttsBtn.classList.add('active');
-             els.ttsBtn.innerHTML = '&#x23F9;'; // Stop icon
+             els.ttsBtn.innerHTML = '<span aria-hidden="true">&#x23F9;</span>'; // Stop icon
              els.ttsBtn.setAttribute('aria-pressed', 'true');
              els.ttsBtn.setAttribute('aria-label', 'Stop Read Aloud');
              els.ttsBtn.setAttribute('title', 'Stop Read Aloud');
@@ -1099,7 +1143,7 @@
         return;
       }
 
-      const headingTop = heading.getBoundingClientRect().top + window.pageYOffset;
+      const headingTop = heading.getBoundingClientRect().top + getScrollTop();
       window.scrollTo({
         top: Math.max(0, headingTop - offset),
         behavior: 'smooth'
@@ -1186,38 +1230,85 @@
       return text;
     }
 
-    async function extractPdfText(arrayBuffer) {
-      showLoader('Loading PDF worker module...');
+    async function extractPdfText(arrayBuffer, readToken) {
+      assertActiveFileRead(readToken);
+      showReadLoader(readToken, 'Loading PDF worker module...');
       const pdfLib = await loadLibrary('pdf');
+      assertActiveFileRead(readToken);
       if (!pdfLib) {
         throw new Error('PDF processing library could not be loaded. Try Markdown or TXT documents instead.');
       }
 
       const typedArray = new Uint8Array(arrayBuffer);
-      const pdf = await pdfLib.getDocument({ data: typedArray }).promise;
-      if (pdf.numPages > MAX_PDF_PAGES) {
-        throw new Error(`This PDF has ${pdf.numPages} pages. Limit is ${MAX_PDF_PAGES} pages for browser processing.`);
-      }
-      const pages = [];
-      let totalTextLength = 0;
+      const loadingTask = pdfLib.getDocument({ data: typedArray });
+      let pdf = null;
 
-      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
-        showLoader(`Reading page ${pageNumber} of ${pdf.numPages}...`);
-        const page = await pdf.getPage(pageNumber);
-        const content = await page.getTextContent();
-        const pageText = extractPdfPageText(content.items);
-        totalTextLength += pageText.length;
-        if (totalTextLength > MAX_EXTRACTED_TEXT_CHARS) {
-          throw new Error(`This PDF contains too much extracted text for the browser reader. Limit is ${MAX_EXTRACTED_TEXT_CHARS.toLocaleString()} characters.`);
+      try {
+        pdf = await loadingTask.promise;
+        assertActiveFileRead(readToken);
+
+        if (pdf.numPages > MAX_PDF_PAGES) {
+          throw new Error(`This PDF has ${pdf.numPages} pages. Limit is ${MAX_PDF_PAGES} pages for browser processing.`);
         }
-        pages.push(pageText);
-      }
+        const pages = [];
+        let totalTextLength = 0;
 
-      return pages.join('\n\n').trim();
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+          assertActiveFileRead(readToken);
+          showReadLoader(readToken, `Reading page ${pageNumber} of ${pdf.numPages}...`);
+          let page = null;
+
+          try {
+            page = await pdf.getPage(pageNumber);
+            assertActiveFileRead(readToken);
+            const content = await page.getTextContent();
+            assertActiveFileRead(readToken);
+            const pageText = extractPdfPageText(content.items);
+            totalTextLength += pageText.length;
+            if (totalTextLength > MAX_EXTRACTED_TEXT_CHARS) {
+              throw new Error(`This PDF contains too much extracted text for the browser reader. Limit is ${MAX_EXTRACTED_TEXT_CHARS.toLocaleString()} characters.`);
+            }
+            pages.push(pageText);
+          } finally {
+            if (page && typeof page.cleanup === 'function') {
+              try {
+                page.cleanup();
+              } catch (err) {
+                console.warn('PDF page cleanup failed.', err);
+              }
+            }
+          }
+        }
+
+        return pages.join('\n\n').trim();
+      } finally {
+        if (pdf && typeof pdf.cleanup === 'function') {
+          try {
+            pdf.cleanup();
+          } catch (err) {
+            console.warn('PDF cleanup failed.', err);
+          }
+        }
+
+        if (loadingTask && typeof loadingTask.destroy === 'function') {
+          try {
+            await loadingTask.destroy();
+          } catch (err) {
+            console.warn('PDF loading task cleanup failed.', err);
+          }
+        } else if (pdf && typeof pdf.destroy === 'function') {
+          try {
+            await pdf.destroy();
+          } catch (err) {
+            console.warn('PDF document cleanup failed.', err);
+          }
+        }
+      }
     }
 
-    async function extractDocxText(arrayBuffer) {
-      showLoader('Loading DOCX parser module...');
+    async function extractDocxText(arrayBuffer, readToken) {
+      assertActiveFileRead(readToken);
+      showReadLoader(readToken, 'Loading DOCX parser module...');
       let mammothLib;
       try {
         mammothLib = await loadLibrary('mammoth');
@@ -1228,24 +1319,34 @@
         throw new Error('DOCX parser library is unavailable. Try reloading the app or exporting this file as TXT/Markdown.');
       }
 
+      assertActiveFileRead(readToken);
       const result = await mammothLib.extractRawText({ arrayBuffer });
+      assertActiveFileRead(readToken);
       return enforceExtractedTextLimit((result.value || '').trim(), 'DOCX');
     }
 
-    async function readSelectedFile(file, extension) {
+    async function readSelectedFile(file, extension, readToken) {
+      assertActiveFileRead(readToken);
+
       if (extension === 'txt' || extension === 'md') {
-        showLoader('Reading text file...');
-        return enforceExtractedTextLimit(await readFileAsText(file), 'text file');
+        showReadLoader(readToken, 'Reading text file...');
+        const text = await readFileAsText(file);
+        assertActiveFileRead(readToken);
+        return enforceExtractedTextLimit(text, 'text file');
       }
 
       if (extension === 'pdf') {
-        showLoader('Parsing PDF document...');
-        return extractPdfText(await readFileAsArrayBuffer(file));
+        showReadLoader(readToken, 'Parsing PDF document...');
+        const arrayBuffer = await readFileAsArrayBuffer(file);
+        assertActiveFileRead(readToken);
+        return extractPdfText(arrayBuffer, readToken);
       }
 
       if (extension === 'docx') {
-        showLoader('Parsing DOCX document...');
-        return extractDocxText(await readFileAsArrayBuffer(file));
+        showReadLoader(readToken, 'Parsing DOCX document...');
+        const arrayBuffer = await readFileAsArrayBuffer(file);
+        assertActiveFileRead(readToken);
+        return extractDocxText(arrayBuffer, readToken);
       }
 
       throw new Error('Unsupported file extension.');
@@ -1257,16 +1358,19 @@
       if (!file) return;
 
       const extension = getExtension(file.name);
+      const readToken = beginFileRead();
       clearStatus();
 
       // Production guard: prevent out-of-bounds file size crashes before parsing.
       if (file.size > MAX_FILE_SIZE) {
+        hideLoader();
         showStatus(`File "${file.name}" is too large (${(file.size / (1024*1024)).toFixed(1)}MB). Limit is 15MB.`, 'error');
         if (target && 'value' in target) target.value = '';
         return;
       }
 
       if (file.size === 0) {
+        hideLoader();
         showStatus(`File "${file.name}" is empty.`, 'error');
         if (target && 'value' in target) target.value = '';
         return;
@@ -1277,14 +1381,16 @@
           throw new Error('Unsupported format. Please upload TXT, Markdown, PDF, or DOCX documents.');
         }
 
-        const text = await readSelectedFile(file, extension);
+        const text = await readSelectedFile(file, extension, readToken);
+        assertActiveFileRead(readToken);
         hideLoader();
         loadTextFlow(text);
       } catch (err) {
+        if (isStaleReadError(err) || !isActiveFileRead(readToken)) return;
         hideLoader();
         showStatus(`Failed to read "${file.name}": ${formatError(err)}`, 'error');
       } finally {
-        if (target && 'value' in target) target.value = '';
+        if (isActiveFileRead(readToken) && target && 'value' in target) target.value = '';
       }
     }
 
@@ -1296,6 +1402,8 @@
     }
 
     function clearText() {
+      cancelPendingFileRead();
+      hideLoader();
       state.currentText = '';
       if (els.pasteArea) els.pasteArea.value = '';
       toggleClearBtn();
@@ -1323,11 +1431,14 @@
 
     function loadFromPaste() {
       if (els.pasteArea) {
+        cancelPendingFileRead();
+        hideLoader();
         loadTextFlow(els.pasteArea.value);
       }
     }
 
     function goBack() {
+      cancelPendingFileRead();
       if (state.isEditing) {
         saveAndExitEditMode();
       }
@@ -1351,6 +1462,7 @@
         els.mobileFab.setAttribute('aria-expanded', 'false');
         els.mobileFab.setAttribute('aria-label', 'Toggle Reading Settings');
       }
+      resetSettingsDrawer();
       
       state.focusMode = false;
       if (els.toolbar) setContainerFocusable(els.toolbar, false);
@@ -1374,6 +1486,7 @@
         els.mobileFab.setAttribute('aria-expanded', 'false');
         els.mobileFab.setAttribute('aria-label', 'Toggle Reading Settings');
       }
+      resetSettingsDrawer();
       
       state.focusMode = false;
       if (els.toolbar) setContainerFocusable(els.toolbar, true);
@@ -1386,6 +1499,16 @@
     }
 
     // ===== Settings drawer bindings =====
+    function resetSettingsDrawer() {
+      if (els.settingsDrawer) els.settingsDrawer.classList.remove('active');
+      if (els.settingsBtn) {
+        els.settingsBtn.classList.remove('active');
+        els.settingsBtn.setAttribute('aria-expanded', 'false');
+        els.settingsBtn.setAttribute('aria-label', 'Open Reading Settings');
+        els.settingsBtn.setAttribute('title', 'Open Reading Settings');
+      }
+    }
+
     function toggleSettingsDrawer() {
       if (!els.settingsDrawer || !els.settingsBtn) return;
       els.settingsDrawer.classList.toggle('active');
@@ -1426,11 +1549,7 @@
         els.mobileFab.setAttribute('aria-label', 'Toggle Reading Settings');
         els.mobileFab.setAttribute('aria-expanded', 'false');
       }
-      if (els.settingsDrawer) els.settingsDrawer.classList.remove('active');
-      if (els.settingsBtn) {
-        els.settingsBtn.classList.remove('active');
-        els.settingsBtn.setAttribute('aria-expanded', 'false');
-      }
+      resetSettingsDrawer();
     }
 
     // ===== In-Context Inline Content Editor =====
@@ -1448,6 +1567,12 @@
       if (isAutoScrolling) toggleAutoScroll();
 
       state.isEditing = true;
+      window.clearTimeout(state.toolbarTimer);
+      state.toolbarTimer = null;
+      if (els.toolbar) {
+        els.toolbar.classList.remove('hidden-bar');
+        setContainerFocusable(els.toolbar, true);
+      }
       
       // Swap content to raw source text block for easy inline edits
       els.readerContent.textContent = state.currentText;
@@ -1457,7 +1582,7 @@
       els.readerContent.setAttribute('aria-label', 'Editable reader text');
       els.readerContent.setAttribute('aria-multiline', 'true');
       els.editingBanner.classList.add('show');
-      els.editBtn.innerHTML = '💾 Save';
+      els.editBtn.innerHTML = '<span aria-hidden="true">&#x1F4BE;</span> Save';
       els.editBtn.classList.add('active');
       els.editBtn.setAttribute('title', 'Save and Exit');
       els.editBtn.setAttribute('aria-label', 'Save and Exit');
@@ -1469,13 +1594,15 @@
 
     function saveAndExitEditMode() {
       if (!els.readerContent || !els.editingBanner || !els.editBtn) return;
+      window.clearTimeout(editDebounceTimer);
+      editDebounceTimer = null;
       state.isEditing = false;
       els.readerContent.setAttribute('contenteditable', 'false');
       els.readerContent.removeAttribute('role');
       els.readerContent.removeAttribute('aria-label');
       els.readerContent.removeAttribute('aria-multiline');
       els.editingBanner.classList.remove('show');
-      els.editBtn.innerHTML = '✏️ Edit';
+      els.editBtn.innerHTML = '<span aria-hidden="true">&#x270F;&#xFE0F;</span> Edit';
       els.editBtn.classList.remove('active');
       els.editBtn.setAttribute('title', 'Edit Text');
       els.editBtn.setAttribute('aria-label', 'Edit Text');
@@ -1621,6 +1748,7 @@
       window.clearTimeout(state.toolbarTimer);
 
       state.toolbarTimer = window.setTimeout(() => {
+        if (state.isEditing) return;
         if (els.toolbar.contains(document.activeElement)) return;
         els.toolbar.classList.add('hidden-bar');
         setContainerFocusable(els.toolbar, false);
@@ -1683,12 +1811,47 @@
       applyPreset(state.currentPresetIndex);
     }
 
+    function hasSelectedText() {
+      const selection = window.getSelection ? window.getSelection() : null;
+      return Boolean(selection && selection.toString().trim().length > 0);
+    }
+
+    function isBlockedGestureTarget(target) {
+      const element = getElementTarget(target);
+      if (!element) return false;
+
+      return Boolean(element.closest([
+        'a',
+        'button',
+        'input',
+        'select',
+        'textarea',
+        'label',
+        'pre',
+        'code',
+        '[contenteditable]',
+        '[role="button"]',
+        '[role="link"]',
+        '[role="slider"]',
+        '[role="textbox"]',
+        '[role="combobox"]',
+        '[role="checkbox"]',
+        '[role="radio"]'
+      ].join(',')));
+    }
+
+    function canStartPresetGesture(target) {
+      return !state.isEditing && !hasSelectedText() && !isBlockedGestureTarget(target);
+    }
+
     function attachGestureArea(element) {
       if (!element) return;
       element.addEventListener('touchstart', event => {
         if (event.touches.length !== 1) return;
-        const target = getElementTarget(event.target);
-        if ((target && target.closest('pre')) || state.isEditing) return;
+        if (!canStartPresetGesture(event.target)) {
+          state.isGesture = false;
+          return;
+        }
         
         state.gestureStartX = event.touches[0].screenX;
         state.gestureStartY = event.touches[0].screenY;
@@ -1706,7 +1869,7 @@
       element.addEventListener('touchend', event => {
         if (!state.isGesture) return;
         state.isGesture = false;
-        if (window.getSelection && window.getSelection().toString().trim().length > 0) return;
+        if (hasSelectedText() || isBlockedGestureTarget(event.target)) return;
 
         const dt = Date.now() - state.gestureStartTime;
         const dx = event.changedTouches[0].screenX - state.gestureStartX;
@@ -1718,8 +1881,10 @@
       }, { passive: true });
 
       element.addEventListener('mousedown', event => {
-        const target = getElementTarget(event.target);
-        if ((target && target.closest('pre')) || state.isEditing) return;
+        if (!canStartPresetGesture(event.target)) {
+          state.isGesture = false;
+          return;
+        }
 
         state.gestureStartX = event.clientX;
         state.gestureStartY = event.clientY;
@@ -1730,7 +1895,7 @@
       element.addEventListener('mouseup', event => {
         if (!state.isGesture) return;
         state.isGesture = false;
-        if (window.getSelection && window.getSelection().toString().trim().length > 0) return;
+        if (hasSelectedText() || isBlockedGestureTarget(event.target)) return;
 
         const dt = Date.now() - state.gestureStartTime;
         const dx = event.clientX - state.gestureStartX;
@@ -1777,14 +1942,17 @@
 
       if (els.presetWindow) {
         els.presetWindow.addEventListener('touchstart', event => {
-          if (event.touches.length === 1) startCarouselDrag(event.touches[0].clientX);
+          if (event.touches.length === 1 && canStartPresetGesture(event.target)) startCarouselDrag(event.touches[0].clientX);
         }, { passive: true });
         els.presetWindow.addEventListener('touchmove', event => {
           if (state.isDraggingCarousel) state.dragCurrentX = event.touches[0].clientX;
         }, { passive: true });
         els.presetWindow.addEventListener('touchend', endCarouselDrag, { passive: true });
-        els.presetWindow.addEventListener('mousedown', event => startCarouselDrag(event.clientX));
+        els.presetWindow.addEventListener('mousedown', event => {
+          if (canStartPresetGesture(event.target)) startCarouselDrag(event.clientX);
+        });
         els.presetWindow.addEventListener('click', event => {
+          if (isBlockedGestureTarget(event.target) || hasSelectedText()) return;
           if (state.isDraggingCarousel || Math.abs(state.dragCurrentX - state.dragStartX) > 5) return;
           const target = getElementTarget(event.target);
           const card = target ? target.closest('.preset-card') : null;
@@ -1819,7 +1987,7 @@
       window.addEventListener('scroll', () => {
         if (!els.readerView || !els.readerView.classList.contains('active') || !els.progressBar) return;
 
-        const winScroll = document.body.scrollTop || document.documentElement.scrollTop;
+        const winScroll = getScrollTop();
         const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
         const scrolled = height > 0 ? (winScroll / height) * 100 : 0;
         els.progressBar.style.width = `${scrolled}%`;
@@ -1950,7 +2118,7 @@
           if (target && els.readerContent.contains(target)) {
             const textContainer = target.closest('p, li, h1, h2, h3, blockquote') || target;
             const rect = textContainer.getBoundingClientRect();
-            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+            const scrollTop = getScrollTop();
             const top = rect.top + scrollTop;
             els.readingRuler.style.height = `${rect.height + 4}px`;
             els.readingRuler.style.transform = `translate3d(0, ${top - 2}px, 0)`;
@@ -1991,7 +2159,7 @@
           announceLive(`Smart headings ${state.smartHeadings ? 'enabled' : 'disabled'}.`);
 
           if (state.currentText && els.readerView && els.readerView.classList.contains('active') && !state.isEditing) {
-            const currentScroll = window.scrollY;
+            const currentScroll = getScrollTop();
             renderTextAsync(state.currentText, () => {
               scheduleWordCountUpdate();
               window.scrollTo(0, currentScroll);
@@ -2039,6 +2207,8 @@
 
           window.clearTimeout(editDebounceTimer);
           editDebounceTimer = window.setTimeout(() => {
+            editDebounceTimer = null;
+            if (!state.isEditing) return;
             const text = els.readerContent.innerText || '';
             state.currentText = text;
             scheduleWordCountUpdate();
