@@ -855,6 +855,13 @@
     .mobile-fab.reader-active {
       display: flex;
     }
+
+    .mobile-fab.reader-active.active {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: scale(0.9);
+    }
     
     .bottom-sheet-handle {
       display: flex;
