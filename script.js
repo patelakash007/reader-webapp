@@ -300,6 +300,13 @@
       if (isActiveFileRead(readToken)) showLoader(message);
     }
 
+    function cancelPendingRender(options = {}) {
+      activeRenderId += 1;
+      if (options.clearContent && els.readerContent) {
+        els.readerContent.textContent = '';
+      }
+    }
+
     // ===== Presets and Custom Typography Colors =====
     const loadedFonts = new Set(['sans', 'serif']);
     const systemSans = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
@@ -777,23 +784,30 @@
     // ===== Features (Ruler, AutoScroll, Fullscreen, Download, TOC) =====
     let isRulerActive = false;
 
-    function toggleRuler() {
-      if (!els.rulerBtn || !els.readingRuler) return;
-      isRulerActive = !isRulerActive;
+    function setRulerActive(active, options = {}) {
+      isRulerActive = Boolean(active);
+      if (els.readingRuler) {
+        els.readingRuler.style.display = isRulerActive ? 'block' : 'none';
+      }
+      if (!els.rulerBtn) return;
+
       els.rulerBtn.classList.toggle('active', isRulerActive);
       els.rulerBtn.setAttribute('aria-pressed', isRulerActive ? 'true' : 'false');
-      
+
       if (isRulerActive) {
-        els.readingRuler.style.display = 'block';
         els.rulerBtn.setAttribute('aria-label', 'Disable Reading Ruler');
         els.rulerBtn.setAttribute('title', 'Disable Reading Ruler');
-        showStatus('Reading ruler guide activated.', 'success');
+        if (options.announce !== false) showStatus('Reading ruler guide activated.', 'success');
       } else {
-        els.readingRuler.style.display = 'none';
         els.rulerBtn.setAttribute('aria-label', 'Enable Reading Ruler');
         els.rulerBtn.setAttribute('title', 'Enable Reading Ruler');
-        showStatus('Reading ruler guide deactivated.', 'info');
+        if (options.announce !== false) showStatus('Reading ruler guide deactivated.', 'info');
       }
+    }
+
+    function toggleRuler() {
+      if (!els.rulerBtn || !els.readingRuler) return;
+      setRulerActive(!isRulerActive);
     }
 
     function updateRulerPosition(e) {
@@ -1360,6 +1374,7 @@
 
       const extension = getExtension(file.name);
       const readToken = beginFileRead();
+      cancelPendingRender();
       clearStatus();
 
       // Production guard: prevent out-of-bounds file size crashes before parsing.
@@ -1404,6 +1419,7 @@
 
     function clearText() {
       cancelPendingFileRead();
+      cancelPendingRender({ clearContent: true });
       hideLoader();
       state.currentText = '';
       if (els.pasteArea) els.pasteArea.value = '';
@@ -1433,6 +1449,7 @@
     function loadFromPaste() {
       if (els.pasteArea) {
         cancelPendingFileRead();
+        cancelPendingRender();
         hideLoader();
         loadTextFlow(els.pasteArea.value);
       }
@@ -1446,6 +1463,7 @@
       }
       if (isSpeaking) stopTTS();
       if (isAutoScrolling) toggleAutoScroll();
+      if (isRulerActive) setRulerActive(false, { announce: false });
       if (getFullscreenElement()) toggleFullscreen();
 
       if (els.readerView) els.readerView.classList.remove('active');

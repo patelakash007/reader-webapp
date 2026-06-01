@@ -56,13 +56,15 @@ async function cacheCanonicalNavigation(cache, request, response) {
   if (!response || !response.ok || !isCanonicalNavigation(request)) return;
 
   const requestUrl = getRequestUrl(request);
-  await safeCachePut(cache, requestUrl, response.clone());
+  const cacheWrites = [safeCachePut(cache, requestUrl, response.clone())];
 
   if (requestUrl === ROOT_URL) {
-    await safeCachePut(cache, INDEX_URL, response.clone());
+    cacheWrites.push(safeCachePut(cache, INDEX_URL, response.clone()));
   } else if (requestUrl === INDEX_URL) {
-    await safeCachePut(cache, ROOT_URL, response.clone());
+    cacheWrites.push(safeCachePut(cache, ROOT_URL, response.clone()));
   }
+
+  await Promise.all(cacheWrites);
 }
 
 async function navigationResponse(request, event) {

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Reader Webapp - Safe & Local eReader</title>
+<title>Reader Webapp - Safe &amp; Local eReader</title>
 <meta name="description" content="A state-of-the-art, fully client-side premium document reader. Processes PDFs, DOCX, Markdown, and TXT files entirely inside the browser with built-in TTS and custom typography presets.">
 <meta name="theme-color" content="#9a3524">
 <meta name="application-name" content="Reader Webapp">
@@ -26,7 +26,7 @@
   
   <div class="editing-banner" id="editingBanner">
     <span>You are in editing mode. Changes stay only in this open page session.</span>
-    <button id="saveEditBannerBtn" type="button">Save & Exit</button>
+    <button id="saveEditBannerBtn" type="button">Save &amp; Exit</button>
   </div>
 
   <button class="mobile-fab" id="mobileFab" type="button" aria-label="Toggle Reading Settings" aria-controls="toolbar" aria-expanded="false"><span aria-hidden="true">&#x1F39B;&#xFE0F;</span></button>
@@ -167,7 +167,7 @@
     <div class="gesture-hint-sub">to change reading preset</div>
   </div>
 
-  <div id="loader" aria-live="assertive">
+  <div id="loader" role="status" aria-live="assertive" aria-atomic="true">
     <div class="spinner"></div>
     <div class="loader-text">Loading text&#8230;</div>
   </div>
