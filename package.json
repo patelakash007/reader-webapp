@@ -1,0 +1,16 @@
+{
+  "name": "reader-webapp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first browser reader app.",
+  "scripts": {
+    "test:syntax": "node --check script.js",
+    "test:pwa": "node scripts/validate-pwa.js",
+    "test:smoke": "node scripts/smoke-playwright.js",
+    "test:chromium": "node scripts/smoke-chromium.js",
+    "test": "npm run test:syntax && npm run test:pwa && npm run test:smoke"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.53.0"
+  }
+}
