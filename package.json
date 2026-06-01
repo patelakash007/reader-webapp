@@ -11,6 +11,6 @@
     "test": "npm run test:syntax && npm run test:pwa && npm run test:smoke"
   },
   "devDependencies": {
-    "playwright-core": "^1.53.0"
+    "playwright-core": "1.60.0"
   }
 }

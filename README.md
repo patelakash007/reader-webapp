@@ -42,11 +42,16 @@ reader-webapp/
 |   |-- maskable-192.png
 |   `-- maskable-512.png
 |-- scripts/
-|   `-- validate-pwa.ps1
+|   |-- browser-smoke-utils.js
+|   |-- smoke-chromium.js
+|   |-- smoke-playwright.js
+|   `-- validate-pwa.js
 |-- vendor/
 |   |-- mammoth.browser.min.js
 |   |-- pdf.min.js
 |   `-- pdf.worker.min.js
+|-- package.json
+|-- package-lock.json
 |-- index.html
 |-- style.css
 |-- script.js
@@ -185,6 +190,36 @@ The following generated paths are ignored:
 - `playwright-report/`
 - `.playwright-cli/`
 - smoke-test screenshots, HTML dumps, and JSON logs
+
+### Agent testing contract
+
+Before editing reader UI, parser behavior, PWA behavior, service worker behavior, or file-reading behavior, agents and contributors should run:
+
+```bash
+npm test
+```
+
+Browser smoke artifacts are generated under `output/browser-smoke/`.
+
+To run the full browser automation path directly:
+
+```bash
+npm run test:smoke
+```
+
+If full Playwright automation is unavailable but a Chromium-compatible executable exists, run the fallback path manually:
+
+```bash
+npm run test:chromium
+```
+
+Both browser smoke paths can use these environment variables to point at a Chromium-compatible executable:
+
+```text
+BROWSER_EXE
+PLAYWRIGHT_CHROMIUM_EXECUTABLE
+CHROMIUM_EXECUTABLE
+```
 
 ### Combined test command
 

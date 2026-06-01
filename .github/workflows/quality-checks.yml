@@ -24,6 +24,9 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Install Playwright Chromium for smoke tests
+        run: npx playwright-core install --with-deps chromium
+
       - name: Check required files
         shell: bash
         run: |
@@ -68,3 +71,6 @@ jobs:
 
       - name: Validate PWA app shell
         run: npm run test:pwa
+
+      - name: Run browser smoke checks
+        run: npm run test:smoke
