@@ -169,7 +169,7 @@
   
   /* Premium Drag and Drop Overlay */
   #inputView.drag-active::after {
-    content: "📥 Drop files here to start reading";
+    content: "Drop files here to start reading";
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     position: absolute;
     inset: 16px;

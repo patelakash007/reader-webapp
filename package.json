@@ -7,8 +7,9 @@
     "test:syntax": "node --check script.js",
     "test:pwa": "node scripts/validate-pwa.js",
     "test:smoke": "node scripts/smoke-playwright.js",
+    "test:deep": "node scripts/deep-playwright.js",
     "test:chromium": "node scripts/smoke-chromium.js",
-    "test": "npm run test:syntax && npm run test:pwa && npm run test:smoke"
+    "test": "npm run test:syntax && npm run test:pwa && npm run test:smoke && npm run test:deep"
   },
   "devDependencies": {
     "playwright-core": "1.60.0"

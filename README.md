@@ -43,6 +43,7 @@ reader-webapp/
 |   `-- maskable-512.png
 |-- scripts/
 |   |-- browser-smoke-utils.js
+|   |-- deep-playwright.js
 |   |-- smoke-chromium.js
 |   |-- smoke-playwright.js
 |   `-- validate-pwa.js
@@ -151,6 +152,16 @@ When Playwright is available, this smoke test:
 
 If Playwright is available and a browser executable is detected, the script launches Chromium with an explicit `executablePath`. If no executable is detected, `playwright-core` reports how to set a browser path, while the full `playwright` package may use its own installed browser if present.
 
+### Deep Playwright regression test
+
+Run:
+
+```bash
+npm run test:deep
+```
+
+The deeper Playwright check exercises Markdown sanitization, reload reset behavior, table of contents, settings controls, edit/save, download, `.markdown` upload support, file error states, service-worker offline reload, and mobile settings layout.
+
 ### Chromium-only fallback smoke test
 
 Run:
@@ -229,7 +240,7 @@ Run:
 npm test
 ```
 
-This runs syntax validation, PWA validation, and the Playwright smoke test. If Playwright is not available, `npm run test:smoke` clearly reports the skip reason and falls back to the Chromium-only smoke path.
+This runs syntax validation, PWA validation, the Playwright smoke test, and the deep Playwright regression test. If Playwright is not available, `npm run test:smoke` clearly reports the skip reason and falls back to the Chromium-only smoke path.
 
 ### Manual testing checklist
 
