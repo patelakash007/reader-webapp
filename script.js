@@ -1588,6 +1588,7 @@
       els.readerContent.setAttribute('aria-label', 'Editable reader text');
       els.readerContent.setAttribute('aria-multiline', 'true');
       els.editingBanner.classList.add('show');
+      setEditingLayoutActive(true);
       els.editBtn.innerHTML = '<span aria-hidden="true">&#x1F4BE;</span> Save';
       els.editBtn.classList.add('active');
       els.editBtn.setAttribute('title', 'Save and Exit');
@@ -1603,11 +1604,12 @@
       window.clearTimeout(editDebounceTimer);
       editDebounceTimer = null;
       state.isEditing = false;
-      els.readerContent.setAttribute('contenteditable', 'false');
+      els.readerContent.removeAttribute('contenteditable');
       els.readerContent.removeAttribute('role');
       els.readerContent.removeAttribute('aria-label');
       els.readerContent.removeAttribute('aria-multiline');
       els.editingBanner.classList.remove('show');
+      setEditingLayoutActive(false);
       els.editBtn.innerHTML = '<span aria-hidden="true">&#x270F;&#xFE0F;</span> Edit';
       els.editBtn.classList.remove('active');
       els.editBtn.setAttribute('title', 'Edit Text');
@@ -1623,6 +1625,23 @@
         announceLive('Changes kept for this session. Reading mode restored.');
         showStatus('Edits kept for this session.', 'success');
       }, { suppressLoader: Boolean(options.suppressRenderLoader) });
+    }
+
+    function updateEditingLayoutOffset() {
+      if (!els.editingBanner || !document.body.classList.contains('editing-mode-active')) return;
+      const height = Math.ceil(els.editingBanner.getBoundingClientRect().height || 0);
+      if (height > 0) {
+        document.documentElement.style.setProperty('--editing-banner-height', `${height}px`);
+      }
+    }
+
+    function setEditingLayoutActive(active) {
+      document.body.classList.toggle('editing-mode-active', Boolean(active));
+      if (active) {
+        window.requestAnimationFrame(updateEditingLayoutOffset);
+        return;
+      }
+      document.documentElement.style.removeProperty('--editing-banner-height');
     }
 
     function insertPlainTextAtSelection(text) {
@@ -2179,6 +2198,7 @@
         if (els.marginInput) {
           updateMarginStyle(parseFloat(els.marginInput.value));
         }
+        if (state.isEditing) updateEditingLayoutOffset();
       });
 
       if (els.voiceRateInput && els.voiceRateVal) {
