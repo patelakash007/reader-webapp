@@ -134,10 +134,10 @@ Run:
 npm run test:smoke
 ```
 
-The script starts a local static server at:
+The script starts a local static server on an available loopback port, for example:
 
 ```text
-http://127.0.0.1:8080/
+http://127.0.0.1:<port>/
 ```
 
 When Playwright is available, this smoke test:
@@ -159,7 +159,7 @@ Run:
 npm run test:chromium
 ```
 
-This starts the same local static server and launches an existing Chromium-compatible executable directly. It checks that the URL loads, verifies the app shell marker in dumped HTML, and saves screenshot and HTML evidence.
+This starts the same dynamic-port local static server and launches an existing Chromium-compatible executable directly. It checks that the URL loads, verifies the app shell marker in dumped HTML, and saves screenshot and HTML evidence.
 
 Chromium-only smoke is intentionally limited: it can check app load, DOM output, and screenshot capture. Playwright smoke is needed for interaction checks, console error capture, page error capture, and mobile viewport coverage.
 
