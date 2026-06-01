@@ -90,7 +90,113 @@ Opening `index.html` directly may work for pasted text, TXT, and Markdown, but b
 
 On supported browsers, open Reader Webapp from GitHub Pages or a local server, then use the browser's Install app option. The PWA service worker caches only static app files so the app shell can reload offline after the first visit.
 
-## Testing checklist
+## Testing
+
+Reader Webapp supports two browser-test environments:
+
+- Full browser automation: Node, Playwright or `playwright-core`, and a Chromium-compatible executable are available.
+- Minimal browser smoke: Node and a Chromium-compatible executable are available, but Playwright may not be installed.
+
+Playwright and Chromium do not need to be checked into this repository. Browser paths can be supplied by environment variable, and generated smoke-test artifacts are ignored by Git.
+
+### Static checks
+
+Run the JavaScript syntax check:
+
+```bash
+npm run test:syntax
+```
+
+This runs:
+
+```bash
+node --check script.js
+```
+
+Run the PWA app-shell validation:
+
+```bash
+npm run test:pwa
+```
+
+This validates that the app shell, manifest, icons, service worker, and local vendor files required by the PWA are present and internally consistent.
+
+### Full Playwright and Chromium smoke test
+
+Run:
+
+```bash
+npm run test:smoke
+```
+
+The script starts a local static server at:
+
+```text
+http://127.0.0.1:8080/
+```
+
+When Playwright is available, this smoke test:
+
+- verifies the app shell loads and the page title matches Reader Webapp
+- captures desktop, reader-flow, and mobile screenshots
+- captures console errors and page errors
+- pastes sample Markdown into the stable `#pasteArea` field when available
+- clicks the stable `#readBtn` control when available
+- verifies rendered reader content without relying on brittle visual selectors
+
+If Playwright is available and a browser executable is detected, the script launches Chromium with an explicit `executablePath`. If no executable is detected, `playwright-core` reports how to set a browser path, while the full `playwright` package may use its own installed browser if present.
+
+### Chromium-only fallback smoke test
+
+Run:
+
+```bash
+npm run test:chromium
+```
+
+This starts the same local static server and launches an existing Chromium-compatible executable directly. It checks that the URL loads, verifies the app shell marker in dumped HTML, and saves screenshot and HTML evidence.
+
+Chromium-only smoke is intentionally limited: it can check app load, DOM output, and screenshot capture. Playwright smoke is needed for interaction checks, console error capture, page error capture, and mobile viewport coverage.
+
+### Browser executable detection
+
+Both smoke scripts prefer these environment variables, in order:
+
+```text
+BROWSER_EXE
+PLAYWRIGHT_CHROMIUM_EXECUTABLE
+CHROMIUM_EXECUTABLE
+```
+
+If none are set, the scripts check common Chromium, Chrome, and Edge install paths for the current operating system. Do not hard-code personal paths in this repo; use an environment variable when automatic detection is not enough.
+
+### Artifacts
+
+Smoke-test screenshots, dumped HTML, and JSON logs are written under:
+
+```text
+output/browser-smoke/
+```
+
+The following generated paths are ignored:
+
+- `output/`
+- `test-results/`
+- `playwright-report/`
+- `.playwright-cli/`
+- smoke-test screenshots, HTML dumps, and JSON logs
+
+### Combined test command
+
+Run:
+
+```bash
+npm test
+```
+
+This runs syntax validation, PWA validation, and the Playwright smoke test. If Playwright is not available, `npm run test:smoke` clearly reports the skip reason and falls back to the Chromium-only smoke path.
+
+### Manual testing checklist
 
 For manual smoke testing, use `http://localhost:8080/` or the GitHub Pages URL. Service worker and PWA behavior should be tested from localhost or GitHub Pages, not by opening `index.html` directly.
 

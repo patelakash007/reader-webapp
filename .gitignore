@@ -17,6 +17,14 @@ Thumbs.db
 *.temp
 tmp/
 temp/
+output/
+test-results/
+playwright-report/
+.playwright-cli/
+*-smoke.png
+*-smoke.html
+*-smoke.json
+playwright-*.png
 
 # Dependency, build, and coverage output
 node_modules/
