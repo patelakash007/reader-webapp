@@ -106,6 +106,52 @@ async function runPlaywrightSmoke() {
     });
     await mobilePage.goto(url, { waitUntil: 'networkidle' });
     await mobilePage.waitForSelector('#app');
+    if (await mobilePage.locator('#pasteArea').count() && await mobilePage.locator('#readBtn').count()) {
+      await mobilePage.fill('#pasteArea', '# Mobile Smoke\n\nMobile reader controls render without overlap.');
+      await mobilePage.click('#readBtn');
+      await mobilePage.waitForSelector('#readerView.active');
+
+      if (await mobilePage.locator('#mobileFab').count()) {
+        await mobilePage.click('#mobileFab');
+        await mobilePage.waitForSelector('#toolbar.expanded');
+        await mobilePage.waitForTimeout(450);
+
+        const blockedControls = await mobilePage.evaluate(() => {
+          const fab = document.querySelector('#mobileFab');
+          const toolbar = document.querySelector('#toolbar');
+          if (!fab || !toolbar) return [];
+
+          const controls = Array.from(toolbar.querySelectorAll('button, input, select, [tabindex]'))
+            .filter(control => control !== fab);
+
+          function isFabHitAt(x, y) {
+            const target = document.elementFromPoint(x, y);
+            return target === fab || (target && fab.contains(target));
+          }
+
+          return controls
+            .filter(control => {
+              const rect = control.getBoundingClientRect();
+              if (rect.width <= 0 || rect.height <= 0) return false;
+
+              const points = [
+                [rect.left + rect.width / 2, rect.top + rect.height / 2],
+                [rect.right - 4, rect.top + rect.height / 2],
+                [rect.left + 4, rect.top + rect.height / 2]
+              ];
+
+              return points.some(([x, y]) => (
+                x >= 0 && y >= 0 && x <= window.innerWidth && y <= window.innerHeight && isFabHitAt(x, y)
+              ));
+            })
+            .map(control => control.id || control.getAttribute('aria-label') || control.textContent.trim() || control.tagName);
+        });
+
+        if (blockedControls.length > 0) {
+          throw new Error(`Mobile settings FAB blocks toolbar controls: ${blockedControls.join(', ')}`);
+        }
+      }
+    }
     await mobilePage.screenshot({ path: path.join(outputDir, 'playwright-mobile.png'), fullPage: true });
     await mobileContext.close();
 
