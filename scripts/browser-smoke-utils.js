@@ -4,7 +4,6 @@ const path = require('node:path');
 
 const rootDir = path.resolve(__dirname, '..');
 const outputDir = path.join(rootDir, 'output', 'browser-smoke');
-const smokeUrl = 'http://127.0.0.1:8080/';
 
 const mimeTypes = new Map([
   ['.css', 'text/css; charset=utf-8'],
@@ -81,14 +80,19 @@ function findBrowserExecutable() {
   return candidateBrowserPaths().find(candidate => fileExists(candidate.path)) || null;
 }
 
-function startStaticServer(port = 8080) {
+function isInsideRoot(filePath) {
+  const relativePath = path.relative(rootDir, filePath);
+  return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath));
+}
+
+function startStaticServer(port = 0) {
   const server = http.createServer((request, response) => {
     const requestUrl = new URL(request.url, `http://127.0.0.1:${port}`);
     const decodedPath = decodeURIComponent(requestUrl.pathname);
     const normalizedPath = path.normalize(decodedPath).replace(/^([/\\])+/, '');
     const filePath = path.resolve(rootDir, normalizedPath || 'index.html');
 
-    if (!filePath.startsWith(rootDir)) {
+    if (!isInsideRoot(filePath)) {
       response.writeHead(403);
       response.end('Forbidden');
       return;
@@ -114,23 +118,13 @@ function startStaticServer(port = 8080) {
   });
 
   return new Promise((resolve, reject) => {
-    server.once('error', error => {
-      if (error.code === 'EADDRINUSE') {
-        resolve({
-          server: null,
-          url: `http://127.0.0.1:${port}/`,
-          reusedExistingServer: true,
-          close: async () => {}
-        });
-        return;
-      }
-
-      reject(error);
-    });
+    server.once('error', reject);
     server.listen(port, '127.0.0.1', () => {
+      const address = server.address();
+      const actualPort = address && typeof address === 'object' ? address.port : port;
       resolve({
         server,
-        url: `http://127.0.0.1:${port}/`,
+        url: `http://127.0.0.1:${actualPort}/`,
         reusedExistingServer: false,
         close: () => new Promise(done => server.close(done))
       });
@@ -170,7 +164,6 @@ module.exports = {
   findBrowserExecutable,
   outputDir,
   rootDir,
-  smokeUrl,
   startStaticServer,
   waitForServer,
   writeJson
