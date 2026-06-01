@@ -32,7 +32,8 @@
     }
 
     const VALID_SIZES = new Set(['small', 'medium', 'large', 'xl']);
-    const SUPPORTED_EXTENSIONS = new Set(['txt', 'md', 'pdf', 'docx']);
+    const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown']);
+    const SUPPORTED_EXTENSIONS = new Set([...TEXT_EXTENSIONS, 'pdf', 'docx']);
     const MAX_FILE_SIZE = 15 * 1024 * 1024;
     const MAX_EXTRACTED_TEXT_CHARS = 1_000_000;
     const MAX_PDF_PAGES = 500;
@@ -1100,19 +1101,26 @@
          showStatus('No text content to download.', 'error');
          return;
        }
+       let url = null;
+       let anchor = null;
        try {
          const blob = new Blob([state.currentText], { type: 'text/plain;charset=utf-8' });
-         const url = URL.createObjectURL(blob);
-         const a = document.createElement('a');
-         a.href = url;
-         a.download = 'Reader_Export.txt';
-         document.body.appendChild(a);
-         a.click();
-         document.body.removeChild(a);
-         URL.revokeObjectURL(url);
+         url = URL.createObjectURL(blob);
+         anchor = document.createElement('a');
+         anchor.href = url;
+         anchor.download = 'Reader_Export.txt';
+         document.body.appendChild(anchor);
+         anchor.click();
          showStatus("File downloaded successfully.", "success");
        } catch (err) {
          showStatus('Download failed on this device.', 'error');
+       } finally {
+         if (anchor && anchor.parentNode) {
+           anchor.parentNode.removeChild(anchor);
+         }
+         if (url) {
+           window.setTimeout(() => URL.revokeObjectURL(url), 0);
+         }
        }
     }
 
@@ -1165,6 +1173,39 @@
       });
     }
 
+    function openTocDialog() {
+      if (!els.tocDialog) return false;
+      if (els.tocDialog.open) return true;
+
+      if (typeof els.tocDialog.showModal === 'function') {
+        try {
+          els.tocDialog.showModal();
+          return true;
+        } catch (err) {
+          // Fall through to the non-modal fallback for double-click races or partial dialog support.
+        }
+      }
+
+      els.tocDialog.setAttribute('open', '');
+      return true;
+    }
+
+    function closeTocDialog() {
+      if (!els.tocDialog || !els.tocDialog.open) return;
+
+      if (typeof els.tocDialog.close === 'function') {
+        try {
+          els.tocDialog.close();
+          return;
+        } catch (err) {
+          // Fall back to attribute removal below.
+        }
+      }
+
+      els.tocDialog.removeAttribute('open');
+      els.tocDialog.dispatchEvent(new Event('close'));
+    }
+
     function populateAndShowTOC() {
        if (!els.readerContent || !els.tocDialog || !els.tocBody) return;
        const headings = els.readerContent.querySelectorAll('h1, h2, h3');
@@ -1177,21 +1218,24 @@
        els.tocBody.innerHTML = '';
 
        headings.forEach((h) => {
-          if (!h.id) h.id = `heading-${Math.random().toString(36).substr(2, 9)}`;
-          const a = document.createElement('a');
-          a.className = 'toc-item';
-          a.textContent = h.textContent;
-          a.href = `#${h.id}`;
-          a.addEventListener('click', (e) => {
-             e.preventDefault();
-             scrollHeadingIntoView(h);
-             els.tocDialog.close();
-          });
-          els.tocBody.appendChild(a);
+         if (!h.id) h.id = `heading-${Math.random().toString(36).substr(2, 9)}`;
+         const a = document.createElement('a');
+         a.className = 'toc-item';
+         a.textContent = h.textContent;
+         a.href = `#${h.id}`;
+         a.addEventListener('click', (e) => {
+           e.preventDefault();
+           scrollHeadingIntoView(h);
+           closeTocDialog();
+         });
+         els.tocBody.appendChild(a);
        });
 
-       els.tocDialog.showModal();
-       
+       if (!openTocDialog()) {
+         showStatus('Table of contents is unavailable in this browser.', 'error');
+         return;
+       }
+
        setTimeout(() => {
          if (els.closeTocBtn) els.closeTocBtn.focus();
        }, 50);
@@ -1343,7 +1387,7 @@
     async function readSelectedFile(file, extension, readToken) {
       assertActiveFileRead(readToken);
 
-      if (extension === 'txt' || extension === 'md') {
+      if (TEXT_EXTENSIONS.has(extension)) {
         showReadLoader(readToken, 'Reading text file...');
         const text = await readFileAsText(file);
         assertActiveFileRead(readToken);
@@ -1394,7 +1438,7 @@
 
       try {
         if (!SUPPORTED_EXTENSIONS.has(extension)) {
-          throw new Error('Unsupported format. Please upload TXT, Markdown, PDF, or DOCX documents.');
+          throw new Error('Unsupported format. Please upload TXT, Markdown (.md or .markdown), PDF, or DOCX documents.');
         }
 
         const text = await readSelectedFile(file, extension, readToken);
@@ -2104,7 +2148,7 @@
       document.addEventListener('keydown', event => {
         if (!els.readerView || !els.readerView.classList.contains('active')) return;
         if (event.key === 'Escape') {
-          if (els.tocDialog && els.tocDialog.open) els.tocDialog.close();
+          if (els.tocDialog && els.tocDialog.open) closeTocDialog();
           else if (state.focusMode) toggleFocus();
           else goBack();
         }
@@ -2135,18 +2179,22 @@
 
       // Dialog Events and Focus Restoration controls
       if (els.tocBtn) els.tocBtn.addEventListener('click', populateAndShowTOC);
-      if (els.closeTocBtn) els.closeTocBtn.addEventListener('click', () => { if(els.tocDialog) els.tocDialog.close(); });
+      if (els.closeTocBtn) els.closeTocBtn.addEventListener('click', closeTocDialog);
       if (els.tocDialog) {
         setupFocusTrap(els.tocDialog);
         els.tocDialog.addEventListener('click', (e) => {
            const rect = els.tocDialog.getBoundingClientRect();
            if (e.clientY < rect.top || e.clientY > rect.bottom || e.clientX < rect.left || e.clientX > rect.right) {
-              els.tocDialog.close();
+              closeTocDialog();
            }
         });
         els.tocDialog.addEventListener('close', () => {
-          if (lastActiveElement) {
-            lastActiveElement.focus();
+          if (lastActiveElement && document.contains(lastActiveElement) && typeof lastActiveElement.focus === 'function') {
+            try {
+              lastActiveElement.focus({ preventScroll: true });
+            } catch (err) {
+              lastActiveElement.focus();
+            }
           }
         });
       }

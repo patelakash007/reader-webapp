@@ -34,12 +34,12 @@
   <main id="inputView">
     <h1 class="brand">Reader</h1>
     <div class="subtitle">Paste your text or drop a file anywhere here</div>
-    <textarea class="paste-area" id="pasteArea" aria-label="Text to read" placeholder="Paste text here..."></textarea>
+    <textarea class="paste-area" id="pasteArea" aria-label="Text to read" placeholder="Paste text here..." autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
     <div class="controls-row">
       <button class="btn btn-primary" id="readBtn" type="button">Read Text</button>
       <label class="file-input-wrap btn btn-secondary" for="fileInput">
         <span>Upload File</span>
-        <input type="file" id="fileInput" accept=".txt,.pdf,.docx,.md">
+        <input type="file" id="fileInput" accept=".txt,.md,.markdown,.pdf,.docx" autocomplete="off">
       </label>
       <button class="btn btn-secondary" id="clearBtn" type="button" style="display:none;">Clear</button>
     </div>
