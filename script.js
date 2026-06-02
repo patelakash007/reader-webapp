@@ -1835,6 +1835,9 @@
       document.body.classList.toggle('focus-mode-active', state.focusMode);
 
       if (state.focusMode) {
+        if (isMobileSheetLayout()) {
+          collapseMobileSheet();
+        }
         els.toolbar.classList.add('force-hidden');
         els.backBtn.classList.add('force-hidden');
         els.wordCount.classList.add('force-hidden');

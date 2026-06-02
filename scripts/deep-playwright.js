@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const http = require('node:http');
 const path = require('node:path');
 const {
   browserEnvVars,
@@ -53,6 +54,20 @@ async function waitForText(page, selector, text) {
   );
 }
 
+async function getHttpStatus(url) {
+  return new Promise((resolve, reject) => {
+    const request = http.get(url, response => {
+      response.resume();
+      response.on('end', () => resolve(response.statusCode));
+    });
+
+    request.on('error', reject);
+    request.setTimeout(3000, () => {
+      request.destroy(new Error('Timed out waiting for HTTP status.'));
+    });
+  });
+}
+
 async function revealToolbar(page) {
   const isHidden = await page.locator('#toolbar.hidden-bar').count();
   if (!isHidden) return;
@@ -78,6 +93,8 @@ async function runDeepPlaywrightChecks() {
 
   try {
     await waitForServer(url);
+    const malformedStatus = await getHttpStatus(`${url}%E0%A4%A`);
+    assert(malformedStatus === 400, `Malformed local-server path returned ${malformedStatus}, expected 400.`);
 
     const launchOptions = { headless: true };
     if (browserExecutable) {
@@ -320,9 +337,38 @@ async function runDeepPlaywrightChecks() {
     assert(mobileState.bodyWidth <= mobileState.viewportWidth + 1, `Mobile layout overflowed horizontally: body=${mobileState.bodyWidth}, viewport=${mobileState.viewportWidth}`);
     screenshots.push(path.join(outputDir, 'deep-mobile-settings.png'));
     await mobilePage.screenshot({ path: screenshots[screenshots.length - 1], fullPage: false });
+    await mobilePage.click('#focusBtn');
+    await mobilePage.waitForFunction(() => document.body.classList.contains('focus-mode-active'));
+    await mobilePage.waitForFunction(() => {
+      const backdrop = document.querySelector('#sheetBackdrop');
+      return !backdrop || (!backdrop.classList.contains('show') && getComputedStyle(backdrop).opacity === '0');
+    });
+    const mobileFocusState = await mobilePage.evaluate(() => {
+      const backdrop = document.querySelector('#sheetBackdrop');
+      const toolbar = document.querySelector('#toolbar');
+      const mobileFab = document.querySelector('#mobileFab');
+      const centerTarget = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+
+      return {
+        backdropVisible: Boolean(backdrop && backdrop.classList.contains('show')),
+        backdropOpacity: backdrop ? getComputedStyle(backdrop).opacity : null,
+        toolbarExpanded: Boolean(toolbar && toolbar.classList.contains('expanded')),
+        toolbarHidden: Boolean(toolbar && toolbar.classList.contains('force-hidden')),
+        fabExpanded: mobileFab ? mobileFab.getAttribute('aria-expanded') : null,
+        centerTargetId: centerTarget ? centerTarget.id : ''
+      };
+    });
+    assert(mobileFocusState.toolbarHidden, 'Mobile focus mode did not hide the toolbar.');
+    assert(!mobileFocusState.toolbarExpanded, 'Mobile focus mode left the bottom sheet expanded.');
+    assert(!mobileFocusState.backdropVisible, 'Mobile focus mode left the sheet backdrop visible.');
+    assert(mobileFocusState.backdropOpacity === '0', `Mobile focus mode backdrop opacity stayed at ${mobileFocusState.backdropOpacity}.`);
+    assert(mobileFocusState.fabExpanded === 'false', 'Mobile focus mode left the settings FAB expanded.');
+    assert(mobileFocusState.centerTargetId !== 'sheetBackdrop', 'Mobile focus mode backdrop blocked the reader viewport.');
+    screenshots.push(path.join(outputDir, 'deep-mobile-focus.png'));
+    await mobilePage.screenshot({ path: screenshots[screenshots.length - 1], fullPage: false });
     assert(mobileErrors.length === 0, `Mobile browser errors:\n${mobileErrors.join('\n')}`);
     await mobileContext.close();
-    results.push('Mobile settings flow passed.');
+    results.push('Mobile settings and focus-mode flow passed.');
 
     assert(browserErrors.length === 0, `Browser errors:\n${browserErrors.join('\n')}`);
 
