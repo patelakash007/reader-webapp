@@ -846,6 +846,7 @@
     padding: 0;
     margin: -8px auto 4px;
     cursor: pointer;
+    flex: 0 0 auto;
   }
 
   .bottom-sheet-handle::before {
@@ -913,6 +914,12 @@
     
     .bottom-sheet-handle {
       display: flex;
+      position: sticky;
+      top: -16px;
+      z-index: 2;
+      width: 100%;
+      margin: -8px 0 4px;
+      background: linear-gradient(to bottom, var(--toolbar-bg) 70%, transparent);
     }
 
     .reader-status-message {
@@ -935,13 +942,19 @@
       padding: 16px calc(20px + env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 16px) + 16px) calc(20px + env(safe-area-inset-left, 0px));
       margin: 0;
       max-height: calc(100vh - env(safe-area-inset-top, 0px) - 24px);
+      max-height: min(78dvh, calc(100vh - env(safe-area-inset-top, 0px) - 24px));
       overflow-y: auto;
       overscroll-behavior: contain;
+      overflow-anchor: none;
       border-bottom: none;
       border-top: 1.5px solid rgba(154, 53, 36, 0.15);
       background: var(--toolbar-bg);
       backdrop-filter: blur(28px);
       -webkit-backdrop-filter: blur(28px);
+    }
+
+    body.mobile-sheet-active {
+      overflow: hidden;
     }
 
     .editing-mode-active #toolbar {
@@ -978,6 +991,8 @@
       overflow-x: auto; 
       justify-content: flex-start;
       width: calc(100% + 32px);
+      min-height: 44px;
+      flex: 0 0 auto;
       margin: 0 -16px;
       padding: 0 16px;
       -webkit-overflow-scrolling: touch;
