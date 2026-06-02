@@ -22,7 +22,7 @@ https://patelakash007.github.io/reader-webapp/
 - Installable PWA support on supported browsers
 - Non-persistent sessions: documents, reading state, and preferences reset on reload
 - PDF/DOCX parser libraries are bundled locally
-- Mobile-friendly layout for phone reading
+- Mobile-friendly layout with collapsible settings sections for phone reading
 - Single-page PWA split across `index.html`, `style.css`, `script.js`, `sw.js`, `manifest.webmanifest`, `icons/`, and `vendor/`
 
 ## Why this exists

@@ -29,7 +29,7 @@
     <button id="saveEditBannerBtn" type="button">Save &amp; Exit</button>
   </div>
 
-  <button class="mobile-fab" id="mobileFab" type="button" aria-label="Toggle Reading Settings" aria-controls="toolbar" aria-expanded="false"><span aria-hidden="true">&#x1F39B;&#xFE0F;</span></button>
+  <button class="mobile-fab" id="mobileFab" type="button" aria-label="Open Reading Settings" aria-controls="toolbar" aria-expanded="false"><span aria-hidden="true">&#x1F39B;&#xFE0F;</span></button>
 
   <main id="inputView">
     <h1 class="brand">Reader</h1>
@@ -58,100 +58,148 @@
 
     <div id="toolbar">
       <button class="bottom-sheet-handle" id="bottomSheetHandle" type="button" aria-label="Collapse Reading Settings"></button>
-      
-      <div class="toolbar-top-row">
-        <button class="tb-btn" id="tocBtn" type="button" title="Table of Contents" aria-label="Table of Contents"><span aria-hidden="true">&#x2630;</span></button>
-        <div class="tb-sep"></div>
-        <span class="tb-label">Size</span>
-        <button class="tb-btn" data-size="small" type="button" aria-label="Small text size" aria-pressed="false">S</button>
-        <button class="tb-btn active" data-size="medium" type="button" aria-label="Medium text size" aria-pressed="true">M</button>
-        <button class="tb-btn" data-size="large" type="button" aria-label="Large text size" aria-pressed="false">L</button>
-        <button class="tb-btn" data-size="xl" type="button" aria-label="Extra large text size" aria-pressed="false">XL</button>
-        <div class="tb-sep"></div>
-        <button class="tb-btn" id="focusBtn" type="button" title="Hide UI" aria-label="Hide UI" aria-pressed="false"><span aria-hidden="true">&#9974;</span></button>
-        <button class="tb-btn" id="fullscreenBtn" type="button" title="Enter Fullscreen" aria-label="Enter Fullscreen" aria-pressed="false"><span aria-hidden="true">&#x26F6;</span></button>
-        <button class="tb-btn" id="autoScrollBtn" type="button" title="Start Auto Scroll" aria-label="Start Auto Scroll" aria-pressed="false"><span aria-hidden="true">&#x25B6;</span></button>
-        <button class="tb-btn" id="ttsBtn" type="button" title="Start Read Aloud" aria-label="Start Read Aloud" aria-pressed="false"><span aria-hidden="true">&#x1F50A;</span></button>
-        <button class="tb-btn" id="rulerBtn" type="button" title="Enable Reading Ruler" aria-label="Enable Reading Ruler" aria-pressed="false"><span aria-hidden="true">&#x1F4CF;</span> Ruler</button>
-        <button class="tb-btn" id="settingsBtn" type="button" title="Open Reading Settings" aria-label="Open Reading Settings" aria-controls="settingsDrawer" aria-expanded="false"><span aria-hidden="true">&#x2699;&#xFE0F;</span> Settings</button>
-        <button class="tb-btn" id="downloadBtn" type="button" title="Download Text" aria-label="Download Text"><span aria-hidden="true">&#x2B07;</span></button>
-        <div class="tb-sep"></div>
-        <button class="tb-btn" id="editBtn" type="button" title="Edit Text" aria-label="Edit Text" aria-pressed="false"><span aria-hidden="true">&#x270E;</span> Edit</button>
-      </div>
 
-      <!-- Advanced Settings Drawer -->
-      <div class="settings-drawer" id="settingsDrawer">
-        <div class="settings-group">
-          <span class="settings-label">Typography</span>
-          <div class="settings-row">
-            <div class="control-item">
-              <label for="lineHeightInput">Line Height</label>
-              <input type="range" id="lineHeightInput" min="1.4" max="2.6" step="0.1" value="1.85">
-            </div>
-            <div class="control-item">
-              <label for="letterSpacingInput">Letter Spacing</label>
-              <input type="range" id="letterSpacingInput" min="-0.03" max="0.15" step="0.01" value="-0.015">
-            </div>
-            <div class="control-item">
-              <label for="marginInput">Margins (px)</label>
-              <input type="range" id="marginInput" min="12" max="80" step="4" value="24">
-            </div>
-          </div>
-        </div>
-
-        <div class="settings-group">
-          <span class="settings-label">Speech (TTS)</span>
-          <div class="settings-row">
-            <div class="control-item" style="flex: 2;">
-              <label for="voiceSelect">Voice</label>
-              <select id="voiceSelect"></select>
-            </div>
-            <div class="control-item" style="flex: 1;">
-              <div style="display:flex; justify-content:space-between; align-items:center;">
-                <label for="voiceRateInput">Speed</label>
-                <span class="value-display" id="voiceRateVal">1.0x</span>
+      <div class="settings-drawer active" id="settingsDrawer" aria-label="Reading settings">
+        <section class="settings-section is-open" data-settings-section="theme">
+          <button class="settings-section-toggle" type="button" aria-expanded="true" aria-controls="themeSettingsPanel">
+            <span>
+              <span class="settings-section-title">Theme &amp; Presets</span>
+              <span class="settings-section-summary" id="themeSettingsSummary">Claude, Light</span>
+            </span>
+            <span class="settings-section-chevron" aria-hidden="true"></span>
+          </button>
+          <div class="settings-section-panel" id="themeSettingsPanel">
+            <div class="settings-panel-inner">
+              <div class="preset-carousel" id="presetCarousel">
+                <button class="preset-arrow" id="arrowLeft" type="button" aria-label="Previous Preset"><span aria-hidden="true">&#10094;</span></button>
+                <div class="preset-window" id="presetWindow" tabindex="0" role="region" aria-label="Reading preset carousel">
+                  <div class="preset-track snapping" id="presetTrack"></div>
+                </div>
+                <button class="preset-arrow" id="arrowRight" type="button" aria-label="Next Preset"><span aria-hidden="true">&#10095;</span></button>
               </div>
-              <input type="range" id="voiceRateInput" min="0.5" max="2.5" step="0.1" value="1.0">
-            </div>
-          </div>
-        </div>
-
-        <div class="settings-group">
-          <span class="settings-label">Auto-Scroll</span>
-          <div class="settings-row">
-            <div class="control-item">
-              <div style="display:flex; justify-content:space-between; align-items:center;">
-                <label for="scrollSpeedInput">Scroll Speed</label>
-                <span class="value-display" id="scrollSpeedVal">1.0x</span>
+              <div class="preset-dots" id="presetDots"></div>
+              <div class="mode-toggle-row">
+                <button class="mode-btn active" id="modeLight" type="button" aria-pressed="true"><span aria-hidden="true">&#9728;</span> Light</button>
+                <button class="mode-btn" id="modeDark" type="button" aria-pressed="false"><span aria-hidden="true">&#9790;</span> Dark</button>
               </div>
-              <input type="range" id="scrollSpeedInput" min="0.01" max="0.2" step="0.01" value="0.04">
             </div>
           </div>
-        </div>
+        </section>
 
-        <div class="settings-group">
-          <span class="settings-label">Parsing</span>
-          <div class="settings-row">
-            <label class="control-item checkbox-control">
-              <input type="checkbox" id="smartHeadingsInput" checked>
-              <span>Smart Headings</span>
-            </label>
+        <section class="settings-section" data-settings-section="text">
+          <button class="settings-section-toggle" type="button" aria-expanded="false" aria-controls="textSettingsPanel">
+            <span>
+              <span class="settings-section-title">Text</span>
+              <span class="settings-section-summary">Size, spacing, margins</span>
+            </span>
+            <span class="settings-section-chevron" aria-hidden="true"></span>
+          </button>
+          <div class="settings-section-panel" id="textSettingsPanel" hidden>
+            <div class="settings-panel-inner">
+              <div class="size-control-group">
+                <span class="settings-label">Text Size</span>
+                <div class="size-choice-row" role="group" aria-label="Text size">
+                  <button class="tb-btn" data-size="small" type="button" aria-label="Small text size" aria-pressed="false">S</button>
+                  <button class="tb-btn active" data-size="medium" type="button" aria-label="Medium text size" aria-pressed="true">M</button>
+                  <button class="tb-btn" data-size="large" type="button" aria-label="Large text size" aria-pressed="false">L</button>
+                  <button class="tb-btn" data-size="xl" type="button" aria-label="Extra large text size" aria-pressed="false">XL</button>
+                </div>
+              </div>
+              <div class="settings-row">
+                <div class="control-item">
+                  <label for="lineHeightInput">Line Height</label>
+                  <input type="range" id="lineHeightInput" min="1.4" max="2.6" step="0.1" value="1.85">
+                </div>
+                <div class="control-item">
+                  <label for="letterSpacingInput">Letter Spacing</label>
+                  <input type="range" id="letterSpacingInput" min="-0.03" max="0.15" step="0.01" value="-0.015">
+                </div>
+                <div class="control-item">
+                  <label for="marginInput">Margins</label>
+                  <input type="range" id="marginInput" min="12" max="80" step="4" value="24">
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </section>
 
-      <div class="preset-carousel" id="presetCarousel">
-        <button class="preset-arrow" id="arrowLeft" type="button" aria-label="Previous Preset"><span aria-hidden="true">&#10094;</span></button>
-        <div class="preset-window" id="presetWindow" tabindex="0" role="region" aria-label="Reading preset carousel">
-          <div class="preset-track snapping" id="presetTrack"></div>
-        </div>
-        <button class="preset-arrow" id="arrowRight" type="button" aria-label="Next Preset"><span aria-hidden="true">&#10095;</span></button>
-      </div>
-      <div class="preset-dots" id="presetDots"></div>
+        <section class="settings-section" data-settings-section="tools">
+          <button class="settings-section-toggle" type="button" aria-expanded="false" aria-controls="toolsSettingsPanel">
+            <span>
+              <span class="settings-section-title">Reading Tools</span>
+              <span class="settings-section-summary">Focus, ruler, TOC, edit</span>
+            </span>
+            <span class="settings-section-chevron" aria-hidden="true"></span>
+          </button>
+          <div class="settings-section-panel" id="toolsSettingsPanel" hidden>
+            <div class="settings-panel-inner">
+              <div class="tool-grid">
+                <button class="tb-btn" id="focusBtn" type="button" title="Hide UI" aria-label="Hide UI" aria-pressed="false"><span aria-hidden="true">&#9974;</span> Focus</button>
+                <button class="tb-btn" id="fullscreenBtn" type="button" title="Enter Fullscreen" aria-label="Enter Fullscreen" aria-pressed="false"><span aria-hidden="true">&#x26F6;</span> Fullscreen</button>
+                <button class="tb-btn" id="rulerBtn" type="button" title="Enable Reading Ruler" aria-label="Enable Reading Ruler" aria-pressed="false"><span aria-hidden="true">&#x1F4CF;</span> Ruler</button>
+                <button class="tb-btn" id="tocBtn" type="button" title="Table of Contents" aria-label="Table of Contents"><span aria-hidden="true">&#x2630;</span> Contents</button>
+                <button class="tb-btn" id="downloadBtn" type="button" title="Download Text" aria-label="Download Text"><span aria-hidden="true">&#x2B07;</span> Download</button>
+                <button class="tb-btn" id="editBtn" type="button" title="Edit Text" aria-label="Edit Text" aria-pressed="false"><span aria-hidden="true">&#x270E;</span> Edit</button>
+              </div>
+            </div>
+          </div>
+        </section>
 
-      <div class="mode-toggle-row">
-        <button class="mode-btn active" id="modeLight" type="button" aria-pressed="true"><span aria-hidden="true">&#9728;</span> Light</button>
-        <button class="mode-btn" id="modeDark" type="button" aria-pressed="false"><span aria-hidden="true">&#9790;</span> Dark</button>
+        <section class="settings-section" data-settings-section="listen">
+          <button class="settings-section-toggle" type="button" aria-expanded="false" aria-controls="listenSettingsPanel">
+            <span>
+              <span class="settings-section-title">Listen &amp; Auto-scroll</span>
+              <span class="settings-section-summary">Speech and motion speed</span>
+            </span>
+            <span class="settings-section-chevron" aria-hidden="true"></span>
+          </button>
+          <div class="settings-section-panel" id="listenSettingsPanel" hidden>
+            <div class="settings-panel-inner">
+              <div class="tool-grid compact-tool-grid">
+                <button class="tb-btn" id="ttsBtn" type="button" title="Start Read Aloud" aria-label="Start Read Aloud" aria-pressed="false"><span aria-hidden="true">&#x1F50A;</span> Read Aloud</button>
+                <button class="tb-btn" id="autoScrollBtn" type="button" title="Start Auto Scroll" aria-label="Start Auto Scroll" aria-pressed="false"><span aria-hidden="true">&#x25B6;</span> Auto-scroll</button>
+              </div>
+              <div class="settings-row">
+                <div class="control-item voice-control">
+                  <label for="voiceSelect">Voice</label>
+                  <select id="voiceSelect"></select>
+                </div>
+                <div class="control-item">
+                  <div class="control-label-row">
+                    <label for="voiceRateInput">Voice Speed</label>
+                    <span class="value-display" id="voiceRateVal">1.0x</span>
+                  </div>
+                  <input type="range" id="voiceRateInput" min="0.5" max="2.5" step="0.1" value="1.0">
+                </div>
+                <div class="control-item">
+                  <div class="control-label-row">
+                    <label for="scrollSpeedInput">Scroll Speed</label>
+                    <span class="value-display" id="scrollSpeedVal">1.0x</span>
+                  </div>
+                  <input type="range" id="scrollSpeedInput" min="0.01" max="0.2" step="0.01" value="0.04">
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section" data-settings-section="parsing">
+          <button class="settings-section-toggle" type="button" aria-expanded="false" aria-controls="parsingSettingsPanel">
+            <span>
+              <span class="settings-section-title">Parsing</span>
+              <span class="settings-section-summary">Smart headings</span>
+            </span>
+            <span class="settings-section-chevron" aria-hidden="true"></span>
+          </button>
+          <div class="settings-section-panel" id="parsingSettingsPanel" hidden>
+            <div class="settings-panel-inner">
+              <label class="control-item checkbox-control">
+                <input type="checkbox" id="smartHeadingsInput" checked>
+                <span>Smart headings</span>
+              </label>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
 

@@ -151,8 +151,10 @@
       tocBtn: document.getElementById('tocBtn'),
       rulerBtn: document.getElementById('rulerBtn'),
       readingRuler: document.getElementById('readingRuler'),
-      settingsBtn: document.getElementById('settingsBtn'),
       settingsDrawer: document.getElementById('settingsDrawer'),
+      settingsSections: Array.from(document.querySelectorAll('[data-settings-section]')),
+      settingsSectionToggles: Array.from(document.querySelectorAll('.settings-section-toggle')),
+      themeSettingsSummary: document.getElementById('themeSettingsSummary'),
       voiceSelect: document.getElementById('voiceSelect'),
       voiceRateInput: document.getElementById('voiceRateInput'),
       voiceRateVal: document.getElementById('voiceRateVal'),
@@ -448,6 +450,14 @@
       els.presetTrack.querySelectorAll('.preset-card').forEach((card, index) => {
         card.setAttribute('aria-hidden', index === state.currentPresetIndex ? 'false' : 'true');
       });
+      updateThemeSettingsSummary();
+    }
+
+    function updateThemeSettingsSummary() {
+      if (!els.themeSettingsSummary) return;
+      const preset = getPresets()[state.currentPresetIndex];
+      const modeLabel = state.currentMode === 'dark' ? 'Dark' : 'Light';
+      els.themeSettingsSummary.textContent = `${preset ? preset.name : 'Preset'}, ${modeLabel}`;
     }
 
     function applyPreset(index, options = {}) {
@@ -1563,7 +1573,7 @@
       if (els.mobileFab) {
         els.mobileFab.classList.remove('active', 'reader-active');
         els.mobileFab.setAttribute('aria-expanded', 'false');
-        els.mobileFab.setAttribute('aria-label', 'Toggle Reading Settings');
+        els.mobileFab.setAttribute('aria-label', 'Open Reading Settings');
       }
       resetSettingsDrawer();
       
@@ -1589,7 +1599,7 @@
         els.mobileFab.classList.add('reader-active');
         els.mobileFab.classList.remove('active');
         els.mobileFab.setAttribute('aria-expanded', 'false');
-        els.mobileFab.setAttribute('aria-label', 'Toggle Reading Settings');
+        els.mobileFab.setAttribute('aria-label', 'Open Reading Settings');
       }
       resetSettingsDrawer();
       
@@ -1604,28 +1614,44 @@
       }, 50);
     }
 
-    // ===== Settings drawer bindings =====
-    function resetSettingsDrawer() {
-      if (els.settingsDrawer) els.settingsDrawer.classList.remove('active');
-      if (els.settingsBtn) {
-        els.settingsBtn.classList.remove('active');
-        els.settingsBtn.setAttribute('aria-expanded', 'false');
-        els.settingsBtn.setAttribute('aria-label', 'Open Reading Settings');
-        els.settingsBtn.setAttribute('title', 'Open Reading Settings');
+    // ===== Settings section bindings =====
+    function setSettingsSectionExpanded(section, expanded) {
+      if (!section) return;
+      const isExpanded = Boolean(expanded);
+      const toggle = section.querySelector('.settings-section-toggle');
+      const panelId = toggle ? toggle.getAttribute('aria-controls') : '';
+      const panel = panelId ? document.getElementById(panelId) : section.querySelector('.settings-section-panel');
+
+      section.classList.toggle('is-open', isExpanded);
+      if (toggle) toggle.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+      if (panel) {
+        panel.hidden = !isExpanded;
+        panel.setAttribute('aria-hidden', isExpanded ? 'false' : 'true');
       }
     }
 
-    function toggleSettingsDrawer() {
-      if (!els.settingsDrawer || !els.settingsBtn) return;
-      els.settingsDrawer.classList.toggle('active');
-      const expanded = els.settingsDrawer.classList.contains('active');
-      els.settingsBtn.classList.toggle('active', expanded);
-      els.settingsBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-      els.settingsBtn.setAttribute('aria-label', expanded ? 'Close Reading Settings' : 'Open Reading Settings');
-      els.settingsBtn.setAttribute('title', expanded ? 'Close Reading Settings' : 'Open Reading Settings');
+    function resetSettingsSections() {
+      if (els.settingsDrawer) els.settingsDrawer.classList.add('active');
+      els.settingsSections.forEach(section => {
+        setSettingsSectionExpanded(section, section.getAttribute('data-settings-section') === 'theme');
+      });
+      updateThemeSettingsSummary();
+    }
+
+    function toggleSettingsSection(section) {
+      if (!section) return;
+      const expanded = !section.classList.contains('is-open');
+      setSettingsSectionExpanded(section, expanded);
+      resetToolbarTimer();
       if (expanded && isMobileSheetLayout() && els.toolbar) {
-        els.toolbar.scrollTop = 0;
+        window.requestAnimationFrame(() => {
+          section.scrollIntoView({ block: 'nearest' });
+        });
       }
+    }
+
+    function resetSettingsDrawer() {
+      resetSettingsSections();
     }
 
     function toggleMobileSheet() {
@@ -1646,8 +1672,6 @@
         document.body.classList.add('mobile-sheet-active');
         if (els.toolbar) {
           els.toolbar.scrollTop = 0;
-          const toolbarRow = els.toolbar.querySelector('.toolbar-top-row');
-          if (toolbarRow) toolbarRow.scrollLeft = 0;
         }
       }
       if (els.mobileFab) {
@@ -1664,12 +1688,10 @@
       document.body.classList.remove('mobile-sheet-active');
       if (els.toolbar) {
         els.toolbar.scrollTop = 0;
-        const toolbarRow = els.toolbar.querySelector('.toolbar-top-row');
-        if (toolbarRow) toolbarRow.scrollLeft = 0;
       }
       if (els.mobileFab) {
         els.mobileFab.classList.remove('active');
-        els.mobileFab.setAttribute('aria-label', 'Toggle Reading Settings');
+        els.mobileFab.setAttribute('aria-label', 'Open Reading Settings');
         els.mobileFab.setAttribute('aria-expanded', 'false');
       }
       resetSettingsDrawer();
@@ -2284,8 +2306,12 @@
         }, { passive: true });
       }
 
-      if (els.settingsBtn) els.settingsBtn.addEventListener('click', toggleSettingsDrawer);
-      
+      els.settingsSectionToggles.forEach(toggle => {
+        toggle.addEventListener('click', () => {
+          toggleSettingsSection(toggle.closest('[data-settings-section]'));
+        });
+      });
+
       // Sliders Typography Range Hooks
       if (els.lineHeightInput) {
         els.lineHeightInput.addEventListener('input', () => {
@@ -2398,6 +2424,7 @@
       cleanupLegacyBrowserStorage();
       registerServiceWorker();
       bindEvents();
+      resetSettingsSections();
 
       state.smartHeadings = true;
       if (els.smartHeadingsInput) els.smartHeadingsInput.checked = state.smartHeadings;
