@@ -1559,6 +1559,7 @@
       if (els.wordCount) els.wordCount.classList.remove('force-hidden');
       if (els.focusRestore) els.focusRestore.classList.remove('show');
       if (els.sheetBackdrop) els.sheetBackdrop.classList.remove('show');
+      document.body.classList.remove('mobile-sheet-active');
       if (els.mobileFab) {
         els.mobileFab.classList.remove('active', 'reader-active');
         els.mobileFab.setAttribute('aria-expanded', 'false');
@@ -1583,6 +1584,7 @@
       if (els.wordCount) els.wordCount.classList.remove('force-hidden');
       if (els.focusRestore) els.focusRestore.classList.remove('show');
       if (els.sheetBackdrop) els.sheetBackdrop.classList.remove('show');
+      document.body.classList.remove('mobile-sheet-active');
       if (els.mobileFab) {
         els.mobileFab.classList.add('reader-active');
         els.mobileFab.classList.remove('active');
@@ -1621,6 +1623,9 @@
       els.settingsBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
       els.settingsBtn.setAttribute('aria-label', expanded ? 'Close Reading Settings' : 'Open Reading Settings');
       els.settingsBtn.setAttribute('title', expanded ? 'Close Reading Settings' : 'Open Reading Settings');
+      if (expanded && isMobileSheetLayout() && els.toolbar) {
+        els.toolbar.scrollTop = 0;
+      }
     }
 
     function toggleMobileSheet() {
@@ -1637,6 +1642,14 @@
       if (els.toolbar) els.toolbar.classList.add('expanded');
       if (els.sheetBackdrop) els.sheetBackdrop.classList.add('show');
       if (els.toolbar) setContainerFocusable(els.toolbar, true);
+      if (isMobileSheetLayout()) {
+        document.body.classList.add('mobile-sheet-active');
+        if (els.toolbar) {
+          els.toolbar.scrollTop = 0;
+          const toolbarRow = els.toolbar.querySelector('.toolbar-top-row');
+          if (toolbarRow) toolbarRow.scrollLeft = 0;
+        }
+      }
       if (els.mobileFab) {
         els.mobileFab.classList.add('active');
         els.mobileFab.setAttribute('aria-label', 'Close Reading Settings');
@@ -1648,6 +1661,12 @@
       if (els.toolbar) els.toolbar.classList.remove('expanded');
       if (els.sheetBackdrop) els.sheetBackdrop.classList.remove('show');
       if (els.toolbar) setContainerFocusable(els.toolbar, false);
+      document.body.classList.remove('mobile-sheet-active');
+      if (els.toolbar) {
+        els.toolbar.scrollTop = 0;
+        const toolbarRow = els.toolbar.querySelector('.toolbar-top-row');
+        if (toolbarRow) toolbarRow.scrollLeft = 0;
+      }
       if (els.mobileFab) {
         els.mobileFab.classList.remove('active');
         els.mobileFab.setAttribute('aria-label', 'Toggle Reading Settings');

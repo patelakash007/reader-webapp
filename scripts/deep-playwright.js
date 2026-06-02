@@ -326,17 +326,62 @@ async function runDeepPlaywrightChecks() {
     await mobilePage.waitForSelector('#toolbar.expanded');
     await mobilePage.click('#settingsBtn');
     await mobilePage.waitForSelector('#settingsDrawer.active');
-    const mobileState = await mobilePage.evaluate(() => ({
-      fabExpanded: document.querySelector('#mobileFab')?.getAttribute('aria-expanded'),
-      toolbarExpanded: document.querySelector('#toolbar')?.classList.contains('expanded'),
-      drawerExpanded: document.querySelector('#settingsDrawer')?.classList.contains('active'),
-      bodyWidth: document.body.scrollWidth,
-      viewportWidth: window.innerWidth
-    }));
+    const mobileState = await mobilePage.evaluate(() => {
+      const toolbar = document.querySelector('#toolbar');
+      const toolbarRow = document.querySelector('.toolbar-top-row');
+      const toolbarRect = toolbar ? toolbar.getBoundingClientRect() : { top: 0 };
+      const backdropTapTarget = document.elementFromPoint(
+        window.innerWidth / 2,
+        Math.max(24, toolbarRect.top / 2)
+      );
+
+      return {
+        fabExpanded: document.querySelector('#mobileFab')?.getAttribute('aria-expanded'),
+        toolbarExpanded: toolbar?.classList.contains('expanded'),
+        toolbarTop: toolbarRect.top,
+        toolbarScrollTop: toolbar ? toolbar.scrollTop : 0,
+        toolbarRowHeight: toolbarRow ? toolbarRow.getBoundingClientRect().height : 0,
+        drawerExpanded: document.querySelector('#settingsDrawer')?.classList.contains('active'),
+        bodyOverflow: getComputedStyle(document.body).overflow,
+        bodyWidth: document.body.scrollWidth,
+        viewportWidth: window.innerWidth,
+        backdropTapTargetId: backdropTapTarget ? backdropTapTarget.id : ''
+      };
+    });
     assert(mobileState.fabExpanded === 'true' && mobileState.toolbarExpanded && mobileState.drawerExpanded, 'Mobile sheet or settings state did not expand.');
+    assert(mobileState.toolbarTop >= 120, `Mobile sheet left too little tappable backdrop above it: top=${mobileState.toolbarTop}.`);
+    assert(mobileState.toolbarScrollTop === 0, `Mobile settings drawer scrolled top controls away: scrollTop=${mobileState.toolbarScrollTop}.`);
+    assert(mobileState.toolbarRowHeight >= 44, `Mobile toolbar row collapsed: height=${mobileState.toolbarRowHeight}.`);
+    assert(mobileState.bodyOverflow === 'hidden', `Mobile sheet did not lock background scroll: overflow=${mobileState.bodyOverflow}.`);
+    assert(mobileState.backdropTapTargetId === 'sheetBackdrop', `Mobile backdrop tap target was blocked by ${mobileState.backdropTapTargetId || 'nothing'}.`);
     assert(mobileState.bodyWidth <= mobileState.viewportWidth + 1, `Mobile layout overflowed horizontally: body=${mobileState.bodyWidth}, viewport=${mobileState.viewportWidth}`);
     screenshots.push(path.join(outputDir, 'deep-mobile-settings.png'));
     await mobilePage.screenshot({ path: screenshots[screenshots.length - 1], fullPage: false });
+
+    await mobilePage.mouse.click(Math.floor(mobileState.viewportWidth / 2), Math.max(24, Math.floor(mobileState.toolbarTop / 2)));
+    await mobilePage.waitForFunction(() => {
+      const toolbar = document.querySelector('#toolbar');
+      const backdrop = document.querySelector('#sheetBackdrop');
+      return toolbar && !toolbar.classList.contains('expanded') && backdrop && !backdrop.classList.contains('show');
+    });
+    await mobilePage.waitForTimeout(450);
+    const mobileCollapsedState = await mobilePage.evaluate(() => ({
+      fabExpanded: document.querySelector('#mobileFab')?.getAttribute('aria-expanded'),
+      toolbarExpanded: document.querySelector('#toolbar')?.classList.contains('expanded'),
+      drawerExpanded: document.querySelector('#settingsDrawer')?.classList.contains('active'),
+      backdropVisible: document.querySelector('#sheetBackdrop')?.classList.contains('show'),
+      bodyOverflow: getComputedStyle(document.body).overflow
+    }));
+    assert(mobileCollapsedState.fabExpanded === 'false', 'Mobile sheet collapse left the settings FAB expanded.');
+    assert(!mobileCollapsedState.toolbarExpanded, 'Mobile backdrop tap did not collapse the bottom sheet.');
+    assert(!mobileCollapsedState.drawerExpanded, 'Mobile backdrop tap left the settings drawer open.');
+    assert(!mobileCollapsedState.backdropVisible, 'Mobile backdrop tap left the backdrop visible.');
+    assert(mobileCollapsedState.bodyOverflow !== 'hidden', 'Mobile sheet collapse left background scroll locked.');
+    screenshots.push(path.join(outputDir, 'deep-mobile-collapsed.png'));
+    await mobilePage.screenshot({ path: screenshots[screenshots.length - 1], fullPage: false });
+
+    await mobilePage.click('#mobileFab');
+    await mobilePage.waitForSelector('#toolbar.expanded');
     await mobilePage.click('#focusBtn');
     await mobilePage.waitForFunction(() => document.body.classList.contains('focus-mode-active'));
     await mobilePage.waitForFunction(() => {
