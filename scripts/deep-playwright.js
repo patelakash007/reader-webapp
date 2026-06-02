@@ -76,6 +76,21 @@ async function revealToolbar(page) {
   await page.waitForFunction(() => !document.querySelector('#toolbar')?.classList.contains('hidden-bar'));
 }
 
+async function expandSettingsSection(page, sectionName) {
+  await revealToolbar(page);
+  const sectionSelector = `[data-settings-section="${sectionName}"]`;
+  await page.waitForSelector(sectionSelector);
+  const expanded = await page.locator(`${sectionSelector} .settings-section-toggle`).getAttribute('aria-expanded');
+  if (expanded !== 'true') {
+    await page.click(`${sectionSelector} .settings-section-toggle`);
+  }
+  await page.waitForFunction(selector => {
+    const section = document.querySelector(selector);
+    const panel = section ? section.querySelector('.settings-section-panel') : null;
+    return Boolean(section && panel && section.classList.contains('is-open') && !panel.hidden);
+  }, sectionSelector);
+}
+
 async function runDeepPlaywrightChecks() {
   ensureOutputDir();
   const playwright = loadPlaywright();
@@ -215,7 +230,7 @@ async function runDeepPlaywrightChecks() {
     await page.waitForFunction(() => document.querySelector('#presetWindow')?.getAttribute('aria-label')?.includes('Stark'));
     results.push('Carousel drag suppression resets before later card clicks.');
 
-    await revealToolbar(page);
+    await expandSettingsSection(page, 'tools');
     await page.click('#tocBtn');
     await page.waitForSelector('#tocDialog[open]');
     const tocItems = await page.locator('#tocBody .toc-item').count();
@@ -224,9 +239,7 @@ async function runDeepPlaywrightChecks() {
     await page.waitForFunction(() => !document.querySelector('#tocDialog')?.open);
     results.push('TOC open and close flow passed.');
 
-    await revealToolbar(page);
-    await page.click('#settingsBtn');
-    await page.waitForSelector('#settingsDrawer.active');
+    await expandSettingsSection(page, 'text');
     await page.locator('#lineHeightInput').fill('2.2');
     await page.locator('#lineHeightInput').dispatchEvent('input');
     await page.locator('#letterSpacingInput').fill('0.05');
@@ -234,14 +247,14 @@ async function runDeepPlaywrightChecks() {
     const typography = await page.evaluate(() => ({
       lineHeight: document.querySelector('#readerContent').style.lineHeight,
       letterSpacing: document.querySelector('#readerContent').style.letterSpacing,
-      expanded: document.querySelector('#settingsBtn').getAttribute('aria-expanded')
+      expanded: document.querySelector('[data-settings-section="text"] .settings-section-toggle')?.getAttribute('aria-expanded')
     }));
     assert(typography.lineHeight === '2.2', 'Line-height slider did not update reader style.');
     assert(typography.letterSpacing === '0.05em', 'Letter-spacing slider did not update reader style.');
     assert(typography.expanded === 'true', 'Settings button ARIA state did not expand.');
-    results.push('Settings drawer controls passed.');
+    results.push('Settings section controls passed.');
 
-    await revealToolbar(page);
+    await expandSettingsSection(page, 'tools');
     await page.click('#editBtn');
     await page.waitForFunction(() => document.querySelector('#readerContent')?.getAttribute('contenteditable') === 'true');
     await page.locator('#readerContent').fill('## Edited Heading\n\nEdited body with **bold** text.');
@@ -258,7 +271,7 @@ async function runDeepPlaywrightChecks() {
     results.push('Edit and save flow passed.');
 
     const downloadPromise = page.waitForEvent('download');
-    await revealToolbar(page);
+    await expandSettingsSection(page, 'tools');
     await page.click('#downloadBtn');
     const download = await downloadPromise;
     assert(download.suggestedFilename() === 'Reader_Export.txt', `Unexpected download file name: ${download.suggestedFilename()}`);
@@ -324,24 +337,31 @@ async function runDeepPlaywrightChecks() {
     await mobilePage.waitForSelector('#readerView.active');
     await mobilePage.click('#mobileFab');
     await mobilePage.waitForSelector('#toolbar.expanded');
-    await mobilePage.click('#settingsBtn');
     await mobilePage.waitForSelector('#settingsDrawer.active');
     const mobileState = await mobilePage.evaluate(() => {
       const toolbar = document.querySelector('#toolbar');
-      const toolbarRow = document.querySelector('.toolbar-top-row');
       const toolbarRect = toolbar ? toolbar.getBoundingClientRect() : { top: 0 };
+      const fab = document.querySelector('#mobileFab');
+      const fabRect = fab ? fab.getBoundingClientRect() : null;
       const backdropTapTarget = document.elementFromPoint(
         window.innerWidth / 2,
         Math.max(24, toolbarRect.top / 2)
       );
+      const sectionStates = Array.from(document.querySelectorAll('[data-settings-section]')).map(section => ({
+        name: section.getAttribute('data-settings-section'),
+        expanded: section.querySelector('.settings-section-toggle')?.getAttribute('aria-expanded'),
+        hidden: section.querySelector('.settings-section-panel')?.hidden
+      }));
 
       return {
         fabExpanded: document.querySelector('#mobileFab')?.getAttribute('aria-expanded'),
+        fabVisible: Boolean(fabRect && fabRect.width > 0 && fabRect.height > 0),
+        fabAboveSheet: Boolean(fabRect && fabRect.bottom <= toolbarRect.top + 8),
         toolbarExpanded: toolbar?.classList.contains('expanded'),
         toolbarTop: toolbarRect.top,
         toolbarScrollTop: toolbar ? toolbar.scrollTop : 0,
-        toolbarRowHeight: toolbarRow ? toolbarRow.getBoundingClientRect().height : 0,
         drawerExpanded: document.querySelector('#settingsDrawer')?.classList.contains('active'),
+        sectionStates,
         bodyOverflow: getComputedStyle(document.body).overflow,
         bodyWidth: document.body.scrollWidth,
         viewportWidth: window.innerWidth,
@@ -349,16 +369,23 @@ async function runDeepPlaywrightChecks() {
       };
     });
     assert(mobileState.fabExpanded === 'true' && mobileState.toolbarExpanded && mobileState.drawerExpanded, 'Mobile sheet or settings state did not expand.');
+    assert(mobileState.fabVisible, 'Mobile settings close pill was hidden while the sheet was open.');
+    assert(mobileState.fabAboveSheet, 'Mobile settings close pill overlapped the bottom sheet controls.');
     assert(mobileState.toolbarTop >= 120, `Mobile sheet left too little tappable backdrop above it: top=${mobileState.toolbarTop}.`);
     assert(mobileState.toolbarScrollTop === 0, `Mobile settings drawer scrolled top controls away: scrollTop=${mobileState.toolbarScrollTop}.`);
-    assert(mobileState.toolbarRowHeight >= 44, `Mobile toolbar row collapsed: height=${mobileState.toolbarRowHeight}.`);
+    assert(mobileState.sectionStates.find(section => section.name === 'theme')?.expanded === 'true', 'Theme section was not open by default on mobile.');
+    assert(mobileState.sectionStates.filter(section => section.name !== 'theme').every(section => section.expanded === 'false' && section.hidden), 'Non-theme mobile settings sections were not collapsed by default.');
     assert(mobileState.bodyOverflow === 'hidden', `Mobile sheet did not lock background scroll: overflow=${mobileState.bodyOverflow}.`);
     assert(mobileState.backdropTapTargetId === 'sheetBackdrop', `Mobile backdrop tap target was blocked by ${mobileState.backdropTapTargetId || 'nothing'}.`);
     assert(mobileState.bodyWidth <= mobileState.viewportWidth + 1, `Mobile layout overflowed horizontally: body=${mobileState.bodyWidth}, viewport=${mobileState.viewportWidth}`);
+
+    await expandSettingsSection(mobilePage, 'text');
+    const mobileTextSectionExpanded = await mobilePage.locator('[data-settings-section="text"] .settings-section-toggle').getAttribute('aria-expanded');
+    assert(mobileTextSectionExpanded === 'true', 'Mobile Text section did not expand after tapping its header.');
     screenshots.push(path.join(outputDir, 'deep-mobile-settings.png'));
     await mobilePage.screenshot({ path: screenshots[screenshots.length - 1], fullPage: false });
 
-    await mobilePage.mouse.click(Math.floor(mobileState.viewportWidth / 2), Math.max(24, Math.floor(mobileState.toolbarTop / 2)));
+    await mobilePage.mouse.click(Math.floor(mobileState.viewportWidth / 2), 48);
     await mobilePage.waitForFunction(() => {
       const toolbar = document.querySelector('#toolbar');
       const backdrop = document.querySelector('#sheetBackdrop');
@@ -368,13 +395,13 @@ async function runDeepPlaywrightChecks() {
     const mobileCollapsedState = await mobilePage.evaluate(() => ({
       fabExpanded: document.querySelector('#mobileFab')?.getAttribute('aria-expanded'),
       toolbarExpanded: document.querySelector('#toolbar')?.classList.contains('expanded'),
-      drawerExpanded: document.querySelector('#settingsDrawer')?.classList.contains('active'),
+      textExpanded: document.querySelector('[data-settings-section="text"] .settings-section-toggle')?.getAttribute('aria-expanded'),
       backdropVisible: document.querySelector('#sheetBackdrop')?.classList.contains('show'),
       bodyOverflow: getComputedStyle(document.body).overflow
     }));
     assert(mobileCollapsedState.fabExpanded === 'false', 'Mobile sheet collapse left the settings FAB expanded.');
     assert(!mobileCollapsedState.toolbarExpanded, 'Mobile backdrop tap did not collapse the bottom sheet.');
-    assert(!mobileCollapsedState.drawerExpanded, 'Mobile backdrop tap left the settings drawer open.');
+    assert(mobileCollapsedState.textExpanded === 'false', 'Mobile sheet collapse did not reset expanded settings sections.');
     assert(!mobileCollapsedState.backdropVisible, 'Mobile backdrop tap left the backdrop visible.');
     assert(mobileCollapsedState.bodyOverflow !== 'hidden', 'Mobile sheet collapse left background scroll locked.');
     screenshots.push(path.join(outputDir, 'deep-mobile-collapsed.png'));
@@ -382,6 +409,7 @@ async function runDeepPlaywrightChecks() {
 
     await mobilePage.click('#mobileFab');
     await mobilePage.waitForSelector('#toolbar.expanded');
+    await expandSettingsSection(mobilePage, 'tools');
     await mobilePage.click('#focusBtn');
     await mobilePage.waitForFunction(() => document.body.classList.contains('focus-mode-active'));
     await mobilePage.waitForFunction(() => {
