@@ -189,7 +189,8 @@
       isGesture: false,
       isEditing: false,
       smartHeadings: true,
-      wordCountTimer: null
+      wordCountTimer: null,
+      lastCarouselDragDistance: 0
     };
 
     let isAutoScrolling = false;
@@ -566,27 +567,65 @@
      * Safe Inline Tokenizer: Compiles safe basic markdown inline syntax from escaped text.
      * Prevents script injection by validating schemes and encoding link targets.
      */
-    function parseInline(escapedText) {
-      if (!escapedText) return '';
+    function parseEmphasis(escapedText) {
       return escapedText
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
         .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-        .replace(/\b_([^_]+)_\b/g, '<em>$1</em>')
-        .replace(/`([^`]+)`/g, '<code>$1</code>')
-        .replace(/\[([^\]]+)\]\(((?:[^()\\]|\\.|\([^()]*\))+)\)/g, (match, text, url) => {
-          const cleanUrl = url.trim();
-          
-          // Strict blocklist for malicious URL schemes
-          const unsafeSchemeRegex = /^(javascript|data|vbscript|file|blob):/i;
-          const safeSchemeRegex = /^(https?|ftp|mailto):/i;
-          
-          const isSafe = (safeSchemeRegex.test(cleanUrl) || cleanUrl.startsWith('/') || cleanUrl.startsWith('#')) && !unsafeSchemeRegex.test(cleanUrl);
-          
-          // External links explicitly carry security rel rules and URI-encoded components
-          return isSafe 
-            ? `<a href="${encodeURI(cleanUrl)}" target="_blank" rel="noopener noreferrer">${text}</a>` 
-            : text;
-        });
+        .replace(/\b_([^_]+)_\b/g, '<em>$1</em>');
+    }
+
+    function decodeHtmlAttributeValue(value) {
+      const decoder = document.createElement('textarea');
+      decoder.innerHTML = value;
+      return decoder.value;
+    }
+
+    function normalizeSafeLinkHref(escapedUrl) {
+      const cleanUrl = decodeHtmlAttributeValue(escapedUrl).trim();
+      if (!cleanUrl || /[\u0000-\u001F\u007F]/.test(cleanUrl)) return null;
+
+      const unsafeSchemeRegex = /^(javascript|data|vbscript|file|blob):/i;
+      const safeSchemeRegex = /^(https?|ftp|mailto):/i;
+      const isRootRelative = cleanUrl.startsWith('/') && !cleanUrl.startsWith('//');
+      const isSafe = (safeSchemeRegex.test(cleanUrl) || isRootRelative || cleanUrl.startsWith('#')) && !unsafeSchemeRegex.test(cleanUrl);
+      if (!isSafe) return null;
+
+      try {
+        return escapeHtml(encodeURI(cleanUrl));
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function restoreInlineTokens(text, tokens, prefix) {
+      return text.replace(new RegExp(`\\uE000${prefix}(\\d+)\\uE001`, 'g'), (match, index) => {
+        return tokens[Number(index)] || match;
+      });
+    }
+
+    function parseInline(escapedText) {
+      if (!escapedText) return '';
+
+      const codeTokens = [];
+      const codeProtected = escapedText.replace(/`([^`]+)`/g, (match, codeText) => {
+        const token = `\uE000CODE${codeTokens.length}\uE001`;
+        codeTokens.push(`<code>${codeText}</code>`);
+        return token;
+      });
+
+      const linkTokens = [];
+      const linksProtected = codeProtected.replace(/\[([^\]]+)\]\(((?:[^()\\]|\\.|\([^()]*\))+)\)/g, (match, text, url) => {
+        const parsedText = parseEmphasis(text);
+        const href = normalizeSafeLinkHref(url);
+        if (!href) return parsedText;
+
+        const token = `\uE000LINK${linkTokens.length}\uE001`;
+        linkTokens.push(`<a href="${href}" target="_blank" rel="noopener noreferrer">${parsedText}</a>`);
+        return token;
+      });
+
+      const emphasized = parseEmphasis(linksProtected);
+      return restoreInlineTokens(restoreInlineTokens(emphasized, linkTokens, 'LINK'), codeTokens, 'CODE');
     }
 
     // High performance asynchronous chunked parser. Prevents layout thrashing on huge documents.
@@ -961,8 +1000,7 @@
       ttsUtterance.onend = () => {
         if (isSpeaking) playNextTTS();
       };
-      ttsUtterance.onerror = (e) => {
-         console.error('TTS error', e);
+      ttsUtterance.onerror = () => {
          if (isSpeaking) playNextTTS();
       };
       
@@ -1880,6 +1918,7 @@
       state.dragCurrentX = x;
       state.dragStartIndex = state.currentPresetIndex;
       state.isDraggingCarousel = true;
+      state.lastCarouselDragDistance = 0;
       els.presetTrack.classList.remove('snapping');
       els.presetTrack.classList.add('dragging');
       window.requestAnimationFrame(updateCarouselDrag);
@@ -1890,6 +1929,7 @@
 
       state.isDraggingCarousel = false;
       const dx = state.dragCurrentX - state.dragStartX;
+      state.lastCarouselDragDistance = Math.abs(dx);
       const threshold = state.carouselWidth * 0.18;
       const list = getPresets();
 
@@ -2041,7 +2081,11 @@
         });
         els.presetWindow.addEventListener('click', event => {
           if (isBlockedGestureTarget(event.target) || hasSelectedText()) return;
-          if (state.isDraggingCarousel || Math.abs(state.dragCurrentX - state.dragStartX) > 5) return;
+          if (state.isDraggingCarousel) return;
+          if (state.lastCarouselDragDistance > 5) {
+            state.lastCarouselDragDistance = 0;
+            return;
+          }
           const target = getElementTarget(event.target);
           const card = target ? target.closest('.preset-card') : null;
           if (!card) return;

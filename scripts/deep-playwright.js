@@ -117,6 +117,10 @@ async function runDeepPlaywrightChecks() {
       '',
       'Paragraph with **bold**, *emphasis*, `code`, [safe](https://example.com/path?q=1), and [bad](javascript:alert(1)).',
       '',
+      'Inline code literal: `**not bold** and [not a link](https://example.com/inside)`.',
+      '',
+      '[query link](https://example.com/search?q=one&lang=en), [protocol relative](//example.com/nope), and [data link](data:text/html,<b>bad</b>).',
+      '',
       '<script>window.__readerXss = 1;</script><img src=x onerror="window.__readerXss=2">',
       '',
       '```',
@@ -143,6 +147,14 @@ async function runDeepPlaywrightChecks() {
         .filter(element => Array.from(element.attributes).some(attribute => /^on/i.test(attribute.name))).length,
       javascriptLinks: document.querySelectorAll('#readerContent a[href^="javascript:"]').length,
       safeLinks: document.querySelectorAll('#readerContent a[href^="https://example.com/"]').length,
+      queryLinkHref: document.querySelector('#readerContent a[href^="https://example.com/search"]')?.getAttribute('href') || '',
+      protocolRelativeLinks: document.querySelectorAll('#readerContent a[href^="//"]').length,
+      dataLinks: document.querySelectorAll('#readerContent a[href^="data:"]').length,
+      inlineCodeText: Array.from(document.querySelectorAll('#readerContent p code'))
+        .map(code => code.textContent || '')
+        .find(text => text.includes('not bold')) || '',
+      inlineCodeHasMarkup: Array.from(document.querySelectorAll('#readerContent p code'))
+        .some(code => (code.textContent || '').includes('not bold') && Boolean(code.querySelector('strong, em, a'))),
       h1Count: document.querySelectorAll('#readerContent h1').length,
       h2Count: document.querySelectorAll('#readerContent h2').length,
       preText: document.querySelector('#readerContent pre code')?.textContent || ''
@@ -151,10 +163,40 @@ async function runDeepPlaywrightChecks() {
     assert(sanitize.scriptCount === 0, 'Script nodes rendered into reader content.');
     assert(sanitize.handlerCount === 0, 'Event handler attributes rendered into reader content.');
     assert(sanitize.javascriptLinks === 0, 'Unsafe javascript: markdown link rendered.');
-    assert(sanitize.safeLinks === 1, 'Safe HTTPS markdown link did not render.');
+    assert(sanitize.safeLinks === 2, 'Safe HTTPS markdown links did not render.');
+    assert(sanitize.queryLinkHref.includes('?q=one&lang=en'), `Query-string link was corrupted: ${sanitize.queryLinkHref}`);
+    assert(sanitize.protocolRelativeLinks === 0, 'Protocol-relative markdown link rendered.');
+    assert(sanitize.dataLinks === 0, 'Unsafe data: markdown link rendered.');
+    assert(sanitize.inlineCodeText.includes('**not bold** and [not a link](https://example.com/inside)'), 'Inline code text did not stay literal.');
+    assert(!sanitize.inlineCodeHasMarkup, 'Inline code parsed nested markdown markup.');
     assert(sanitize.h1Count >= 1 && sanitize.h2Count >= 1, 'Markdown headings did not render.');
     assert(sanitize.preText.includes('<b>raw code stays escaped</b>'), 'Code block text did not stay literal.');
     results.push('Markdown rendering and sanitization passed.');
+
+    const carouselBox = await page.locator('#presetWindow').boundingBox();
+    assert(Boolean(carouselBox), 'Preset carousel was not measurable.');
+    await page.evaluate(({ x, y, width }) => {
+      const windowEl = document.querySelector('#presetWindow');
+      windowEl.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true,
+        clientX: x + width - 24,
+        clientY: y + 20
+      }));
+      window.dispatchEvent(new MouseEvent('mousemove', {
+        bubbles: true,
+        clientX: x + 24,
+        clientY: y + 20
+      }));
+      window.dispatchEvent(new MouseEvent('mouseup', {
+        bubbles: true,
+        clientX: x + 24,
+        clientY: y + 20
+      }));
+      document.querySelector('.preset-card[data-index="1"]').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      document.querySelector('.preset-card[data-index="2"]').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }, carouselBox);
+    await page.waitForFunction(() => document.querySelector('#presetWindow')?.getAttribute('aria-label')?.includes('Stark'));
+    results.push('Carousel drag suppression resets before later card clicks.');
 
     await revealToolbar(page);
     await page.click('#tocBtn');
