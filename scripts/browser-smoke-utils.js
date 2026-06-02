@@ -88,7 +88,16 @@ function isInsideRoot(filePath) {
 function startStaticServer(port = 0) {
   const server = http.createServer((request, response) => {
     const requestUrl = new URL(request.url, `http://127.0.0.1:${port}`);
-    const decodedPath = decodeURIComponent(requestUrl.pathname);
+    let decodedPath;
+
+    try {
+      decodedPath = decodeURIComponent(requestUrl.pathname);
+    } catch (error) {
+      response.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+      response.end('Bad request');
+      return;
+    }
+
     const normalizedPath = path.normalize(decodedPath).replace(/^([/\\])+/, '');
     const filePath = path.resolve(rootDir, normalizedPath || 'index.html');
 
