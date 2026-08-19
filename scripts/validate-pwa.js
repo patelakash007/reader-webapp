@@ -9,6 +9,7 @@ const requiredPaths = [
   'style.css',
   'script.js',
   'session-desk.js',
+  'session-desk-activation.js',
   'vendor/pdf.min.js',
   'vendor/pdf.worker.min.js',
   'vendor/mammoth.browser.min.js',
@@ -61,9 +62,11 @@ if (!indexHtml.includes('rel="manifest"') && !indexHtml.includes("rel='manifest'
 }
 
 const serviceWorker = fs.readFileSync(path.join(rootDir, 'sw.js'), 'utf8');
-if (!serviceWorker.includes("'./session-desk.js'")) {
-  console.error('sw.js does not cache the reading-desk lifecycle controller.');
-  process.exit(1);
+for (const asset of ["'./session-desk.js'", "'./session-desk-activation.js'"]) {
+  if (!serviceWorker.includes(asset)) {
+    console.error(`sw.js does not cache ${asset}.`);
+    process.exit(1);
+  }
 }
 
-console.log('PWA validation passed: app shell, manifest metadata, local reading-desk controller, and service-worker boundary are consistent.');
+console.log('PWA validation passed: app shell, manifest metadata, reading-desk controllers, and service-worker boundary are consistent.');
