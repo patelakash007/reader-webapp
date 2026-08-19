@@ -36,6 +36,7 @@ jobs:
             "index.html"
             "style.css"
             "script.js"
+            "session-overrides.js"
             "README.md"
             "LICENSE"
             "vendor/pdf.min.js"
@@ -61,7 +62,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if grep -Ein '(cdn(js)?|unpkg|jsdelivr)' index.html style.css script.js; then
+          if grep -Ein '(cdn(js)?|unpkg|jsdelivr)' index.html style.css script.js session-overrides.js; then
             echo "CDN reference found in app source files." >&2
             exit 1
           fi
