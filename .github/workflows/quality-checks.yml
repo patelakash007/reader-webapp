@@ -66,11 +66,5 @@ jobs:
             exit 1
           fi
 
-      - name: Check JavaScript syntax
-        run: npm run test:syntax
-
-      - name: Validate PWA app shell
-        run: npm run test:pwa
-
-      - name: Run browser smoke checks
-        run: npm run test:smoke
+      - name: Run complete browser and PWA regression suite
+        run: npm test
