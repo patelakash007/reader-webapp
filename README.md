@@ -1,33 +1,101 @@
 # Reader Webapp
 
-A personal, clean reading webapp for articles, AI responses, basic Markdown, PDFs, DOCX files, and long text.
+A calm, local-first reading webapp for articles, AI responses, TXT, Markdown, PDF, and DOCX files. It runs entirely in the browser and provides a temporary multi-document “reading desk” so several local documents can be opened, compared, and listened to without building a persistent document library.
 
-The goal is simple: paste or open messy reading material, remove the noise, and read it in a calmer interface with better typography, themes, and local-first privacy.
+## Core features
 
-## Live demo
+- Clean reader view for long articles, notes, AI responses, and pasted text
+- Temporary multi-document session queue for pasted text plus local TXT, Markdown, PDF, and DOCX
+- Stable session-only document IDs, display names, source type, safe parsed representation, counts, headings, parse state, and in-memory reading progress
+- Active-document TOC with current-section tracking and empty state for documents without headings
+- Reading progress tracked as a deliberately coarse normalized scroll ratio plus nearest visible heading/anchor; progress is restored only while the current page session remains alive
+- Text-to-speech and auto-scroll synchronized to the active document, with teardown on switching, clearing, leaving the reader, opening another document, and entering focus mode
+- Many reading themes and typography presets, including light/dark and book-like modes
+- Mobile bottom-sheet settings, FAB/close-pill behavior, backdrop scroll locking, focus mode, and collapsible settings sections
+- Installable PWA support with offline app-shell reload
+- Vendored PDF.js and Mammoth parser libraries; no third-party document upload or remote parser service
 
-After GitHub Pages is enabled, the app should be available here:
+## Temporary session model
 
-https://patelakash007.github.io/reader-webapp/
+The reading desk is intentionally ephemeral. A session lives only in JavaScript memory for the current page lifetime:
 
-## Features
+```text
+Session
+├── documents: Map<sessionId, Document>
+├── order: sessionId[]
+├── activeId: sessionId | null
+└── generation: number
 
-- Clean reader view for long articles, notes, and AI responses
-- Supports pasted text and local document reading
-- PDF, DOCX, basic Markdown, and TXT focused workflow
-- Many reading themes including paper, dark, Kindle-like, Notion-like, GitHub-like, Dracula, Nord, and more
-- Typography presets for comfortable long-form reading
-- Text-to-speech support for listening while reading
-- Local-first design: files are processed in the browser
-- Installable PWA support on supported browsers
-- Non-persistent sessions: documents, reading state, and preferences reset on reload
-- PDF/DOCX parser libraries are bundled locally
-- Mobile-friendly layout with collapsible settings sections for phone reading
-- Single-page PWA split across `index.html`, `style.css`, `script.js`, `sw.js`, `manifest.webmanifest`, `icons/`, and `vendor/`
+Document
+├── id: stable session-only identifier
+├── displayName: safe UI label with duplicate-name disambiguation
+├── sourceType: Pasted text | TXT | Markdown | PDF | DOCX
+├── parseStatus: active / error state
+├── safe: structured source + parsed blocks + headings + counts
+├── progress: ratio + headingId + timestamp
+├── lastVisibleHeading
+├── lifecycle
+└── cleanup handles
+```
 
-## Why this exists
+No document text, parsed representation, progress, or queue metadata is written to `localStorage`, `sessionStorage`, IndexedDB, URLs, the service-worker cache, analytics, or remote APIs. Reloading the page, restarting the browser, or using **Clear session** discards the session. Generated downloads are separate browser downloads and are not added to the app cache.
 
-Modern articles and long AI answers can be hard to read because of ads, bad spacing, weak contrast, distracting backgrounds, and messy formatting. Reader Webapp is built as a personal reading space: paste the content, choose a comfortable theme, and read without distractions.
+This is local-first, not an absolute privacy guarantee: a document processed in a browser can still be exposed by the host environment, browser extensions, device compromise, screen capture, or other software with access to the browser session. Use a trusted host for sensitive material.
+
+## Document ingestion and safety
+
+Supported extensions are `.txt`, `.md`, `.markdown`, `.pdf`, and `.docx`.
+
+The existing safety limits remain:
+
+- Maximum input file size: 15 MiB
+- Maximum extracted text: 1,000,000 characters
+- Maximum PDF pages: 500
+- Local parser bundles only: `vendor/pdf.min.js`, `vendor/pdf.worker.min.js`, and `vendor/mammoth.browser.min.js`
+
+Each ingestion has a generation token. Starting another ingestion invalidates the older generation, so a slower parse cannot overwrite a newer session. PDF parsing is checked between pages and destroyed when stale. File reads, parser failures, malformed PDFs/DOCX files, empty files, unsupported formats, and oversized documents produce actionable status messages.
+
+Markdown is rendered from a structured parser rather than trusted HTML. Scripts, event-handler attributes, unsafe links (`javascript:`, `data:`, protocol-relative URLs), and raw HTML are never activated. HTTPS links remain active and their query strings are preserved. Inline code and fenced code are rendered with `textContent`, so markup stays literal.
+
+## Reading progress and navigation
+
+Progress is intentionally approximate. The app records a rounded normalized vertical reading ratio together with the nearest visible heading when one exists. Scroll work is scheduled through `requestAnimationFrame` and the scroll listener is passive; the whole document is not re-rendered during scrolling.
+
+The TOC is scoped to the active document only. Selecting a heading moves the reader to that heading and updates the in-memory progress state without writing navigation state to the URL. TOC close behavior returns focus to the initiating control and does not create a second focus trap.
+
+## Mobile reading desk
+
+On desktop, the queue appears as a restrained reading-desk rail. On mobile, the same queue is exposed inside the existing settings bottom sheet rather than introducing a second toolbar. The existing FAB, close pill, backdrop, scroll lock, focus mode, and collapsible sections remain the controlling mobile state machine.
+
+Queue entries expose document name, source type, word count, and coarse progress. The queue uses `role="listbox"` / `role="option"` semantics and supports Arrow Up/Down, Arrow Left/Right, Home, and End keyboard navigation.
+
+The mobile queue is intentionally quiet: it shares the current typography, themes, borders, spacing, and PWA identity instead of introducing a dashboard-style surface.
+
+## State transitions
+
+| Event | Lifecycle behavior |
+|---|---|
+| Open/paste | Create a session-only document, parse safely, add to queue, activate first successful document |
+| Parsing | Generation token marks the read as current; newer ingestion invalidates it |
+| Active | Render safe representation, track approximate progress, enable TOC/TTS |
+| Switch | Save current progress, cancel speech/auto-scroll, activate target, restore target progress |
+| Remove | Stop speech, run cleanup handles, remove document from in-memory map/order |
+| Clear | Invalidate pending reads, cancel speech/auto-scroll, drop all documents, return to input view |
+| Error | Keep existing session intact and show an actionable status message for the failed input |
+| Reload/restart | JavaScript memory disappears; no session is restored |
+
+## PWA and offline boundary
+
+The service worker caches only the application shell and local parser assets. `session-overrides.js` is part of the app shell so the reading-desk lifecycle hardening also works offline. The worker does not intercept or cache uploaded document data; user files are read from browser memory/file objects only.
+
+The shell cache is versioned and old caches are removed on activation. Canonical navigation is served network-first with the cached shell as offline fallback. Non-shell same-origin requests are not added to the cache.
+
+## Keyboard controls
+
+- **Queue:** Arrow Up/Down or Left/Right to move; Home/End to jump to the first/last document
+- **TOC:** Tab/Shift+Tab through headings; Escape safely closes the dialog
+- **Focus mode:** Escape exits focus mode
+- Existing browser and native control keyboard behavior is preserved
 
 ## Project structure
 
@@ -37,13 +105,10 @@ reader-webapp/
 |   `-- workflows/
 |       `-- quality-checks.yml
 |-- icons/
-|   |-- icon-192.png
-|   |-- icon-512.png
-|   |-- maskable-192.png
-|   `-- maskable-512.png
 |-- scripts/
 |   |-- browser-smoke-utils.js
 |   |-- deep-playwright.js
+|   |-- session-playwright.js
 |   |-- smoke-chromium.js
 |   |-- smoke-playwright.js
 |   `-- validate-pwa.js
@@ -56,6 +121,7 @@ reader-webapp/
 |-- index.html
 |-- style.css
 |-- script.js
+|-- session-overrides.js
 |-- sw.js
 |-- manifest.webmanifest
 |-- README.md
@@ -63,229 +129,54 @@ reader-webapp/
 `-- .gitignore
 ```
 
-## How to use
+## Local development
 
-### Option 1: Use from GitHub Pages
-
-Open the live demo link above after GitHub Pages is enabled.
-
-### Option 2: Run locally
-
-Clone the repository:
-
-```bash
-git clone git@github.com:patelakash007/reader-webapp.git
-cd reader-webapp
-```
-
-For the most reliable preview, especially for PDF/DOCX parsing and the local PDF worker, run a local server:
+Run the static server for the most reliable PDF/DOCX and service-worker behavior:
 
 ```bash
 python -m http.server 8080
 ```
 
-Then open:
+Then open `http://localhost:8080/`.
 
-```text
-http://localhost:8080/
-```
-
-Opening `index.html` directly may work for pasted text, TXT, and Markdown, but browser file restrictions can make PDF/DOCX handling unreliable.
-
-### Install as app
-
-On supported browsers, open Reader Webapp from GitHub Pages or a local server, then use the browser's Install app option. The PWA service worker caches only static app files so the app shell can reload offline after the first visit.
+Opening `index.html` directly may work for pasted text and simple TXT/Markdown, but browser file restrictions can make parser and service-worker behavior unreliable.
 
 ## Testing
 
-Reader Webapp supports two browser-test environments:
-
-- Full browser automation: Node, Playwright or `playwright-core`, and a Chromium-compatible executable are available.
-- Minimal browser smoke: Node and a Chromium-compatible executable are available, but Playwright may not be installed.
-
-Playwright and Chromium do not need to be checked into this repository. Browser paths can be supplied by environment variable, and generated smoke-test artifacts are ignored by Git.
-
-### Static checks
-
-Run the JavaScript syntax check:
+The project has static, PWA, smoke, deep regression, and reading-desk session tests.
 
 ```bash
 npm run test:syntax
-```
-
-This runs:
-
-```bash
-node --check script.js
-```
-
-Run the PWA app-shell validation:
-
-```bash
 npm run test:pwa
-```
-
-This validates that the app shell, manifest, icons, service worker, and local vendor files required by the PWA are present and internally consistent.
-
-### Full Playwright and Chromium smoke test
-
-Run:
-
-```bash
 npm run test:smoke
-```
-
-The script starts a local static server on an available loopback port, for example:
-
-```text
-http://127.0.0.1:<port>/
-```
-
-When Playwright is available, this smoke test:
-
-- verifies the app shell loads and the page title matches Reader Webapp
-- captures desktop, reader-flow, and mobile screenshots
-- captures console errors and page errors
-- pastes sample Markdown into the stable `#pasteArea` field when available
-- clicks the stable `#readBtn` control when available
-- verifies rendered reader content without relying on brittle visual selectors
-
-If Playwright is available and a browser executable is detected, the script launches Chromium with an explicit `executablePath`. If no executable is detected, `playwright-core` reports how to set a browser path, while the full `playwright` package may use its own installed browser if present.
-
-### Deep Playwright regression test
-
-Run:
-
-```bash
 npm run test:deep
-```
-
-The deeper Playwright check exercises Markdown sanitization, reload reset behavior, table of contents, settings controls, edit/save, download, `.markdown` upload support, file error states, service-worker offline reload, and mobile settings layout.
-
-### Chromium-only fallback smoke test
-
-Run:
-
-```bash
-npm run test:chromium
-```
-
-This starts the same dynamic-port local static server and launches an existing Chromium-compatible executable directly. It checks that the URL loads, verifies the app shell marker in dumped HTML, and saves screenshot and HTML evidence.
-
-Chromium-only smoke is intentionally limited: it can check app load, DOM output, and screenshot capture. Playwright smoke is needed for interaction checks, console error capture, page error capture, and mobile viewport coverage.
-
-### Browser executable detection
-
-Both smoke scripts prefer these environment variables, in order:
-
-```text
-BROWSER_EXE
-PLAYWRIGHT_CHROMIUM_EXECUTABLE
-CHROMIUM_EXECUTABLE
-```
-
-If none are set, the scripts check common Chromium, Chrome, and Edge install paths for the current operating system. Do not hard-code personal paths in this repo; use an environment variable when automatic detection is not enough.
-
-### Artifacts
-
-Smoke-test screenshots, dumped HTML, and JSON logs are written under:
-
-```text
-output/browser-smoke/
-```
-
-The following generated paths are ignored:
-
-- `output/`
-- `test-results/`
-- `playwright-report/`
-- `.playwright-cli/`
-- smoke-test screenshots, HTML dumps, and JSON logs
-
-### Agent testing contract
-
-Before editing reader UI, parser behavior, PWA behavior, service worker behavior, or file-reading behavior, agents and contributors should run:
-
-```bash
+npm run test:session
 npm test
 ```
 
-Browser smoke artifacts are generated under `output/browser-smoke/`.
+`npm test` runs syntax validation, PWA validation, Playwright/Chromium smoke coverage, the existing deep regression contract, and the new session regression suite.
 
-To run the full browser automation path directly:
+The new session suite covers:
 
-```bash
-npm run test:smoke
-```
+- multi-document creation and switching
+- duplicate display names
+- progress isolation and restoration
+- explicit clear and reload reset
+- large-read stale-result rejection
+- mixed TXT/Markdown/PDF/DOCX parsing when fixtures are available
+- queue keyboard navigation
+- active-document TOC behavior
+- speech teardown on document switch when browser speech APIs exist
+- unsafe Markdown in a second document
+- absence of document data in browser storage/cache
+- mobile queue behavior at 390×844
 
-If full Playwright automation is unavailable but a Chromium-compatible executable exists, run the fallback path manually:
+PDF/DOCX fixtures are created in temporary system locations and are not committed. If a local environment lacks a facility required for a fixture, the session test records the skip instead of fabricating a pass.
 
-```bash
-npm run test:chromium
-```
+## Performance and lifecycle notes
 
-Both browser smoke paths can use these environment variables to point at a Chromium-compatible executable:
-
-```text
-BROWSER_EXE
-PLAYWRIGHT_CHROMIUM_EXECUTABLE
-CHROMIUM_EXECUTABLE
-```
-
-### Combined test command
-
-Run:
-
-```bash
-npm test
-```
-
-This runs syntax validation, PWA validation, the Playwright smoke test, and the deep Playwright regression test. If Playwright is not available, `npm run test:smoke` clearly reports the skip reason and falls back to the Chromium-only smoke path.
-
-### Manual testing checklist
-
-For manual smoke testing, use `http://localhost:8080/` or the GitHub Pages URL. Service worker and PWA behavior should be tested from localhost or GitHub Pages, not by opening `index.html` directly.
-
-- Paste text into the reader.
-- Upload TXT, Markdown, PDF, and DOCX files.
-- Try reader controls such as theme, typography, spacing, width, and text-to-speech.
-- Install the PWA from a supported browser.
-- After the first visit, reload the app while offline and confirm the app shell still opens.
-- Confirm documents, pasted text, reading state, and preferences are not persisted after reload.
-
-## Privacy notes
-
-Reader Webapp is designed to keep reading local-first. Documents are opened and processed inside the browser where possible, and PDF/DOCX parser libraries are bundled locally in this repo.
-
-Local-first does not mean zero risk when the app is hosted online, but the app avoids default third-party font requests and processes supported documents in the browser. The app does not persist documents, pasted text, reading state, or preferences in browser storage. PWA offline caching is limited to app shell files such as HTML, CSS, JavaScript, local vendor libraries, the manifest, and icons; uploaded documents and generated downloads are not cached by the app. Avoid pasting sensitive private data into any online-hosted version unless you fully trust the environment and browser session.
-
-## Development workflow
-
-Preferred workflow for changes:
-
-1. Create a new branch for each improvement.
-2. Commit the change to that branch.
-3. Open a pull request into `main`.
-4. Review the diff before merging.
-
-Example:
-
-```bash
-git checkout -b feature/better-reading-mode
-# edit files
-git add index.html style.css script.js README.md .gitignore vendor/
-git commit -m "feat: improve reading mode"
-git push -u origin feature/better-reading-mode
-```
-
-## Roadmap ideas
-
-- Better pasted-article cleanup
-- Improved Markdown rendering
-- Reading progress polish
-- More accessibility checks
-- Better mobile toolbar behavior
+The session stores structured text needed by the active reading flow rather than DOM snapshots. Queue updates rebuild only the small queue surface, while scroll updates use `requestAnimationFrame`. Download object URLs are revoked after use. Removed documents have their cleanup hooks invoked and are dropped from the session map so they are no longer retained by queue/listener references. Parser work is invalidated on newer reads so stale results cannot keep ownership of active reader state.
 
 ## License
 
-This project is licensed under the MIT License. See [`LICENSE`](LICENSE) for details.
+MIT. See [`LICENSE`](LICENSE).
