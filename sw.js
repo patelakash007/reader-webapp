@@ -6,7 +6,7 @@ const APP_SHELL = [
   './index.html',
   './style.css',
   './script.js',
-  './session-overrides.js',
+  './session-desk.js',
   './manifest.webmanifest',
   './vendor/pdf.min.js',
   './vendor/pdf.worker.min.js',
