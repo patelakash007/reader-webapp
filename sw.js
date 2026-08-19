@@ -7,6 +7,7 @@ const APP_SHELL = [
   './style.css',
   './script.js',
   './session-desk.js',
+  './session-desk-activation.js',
   './manifest.webmanifest',
   './vendor/pdf.min.js',
   './vendor/pdf.worker.min.js',
