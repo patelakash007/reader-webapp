@@ -7,6 +7,8 @@ $requiredPaths = @(
   'index.html',
   'style.css',
   'script.js',
+  'session-desk.js',
+  'session-desk-activation.js',
   'vendor/pdf.min.js',
   'vendor/pdf.worker.min.js',
   'vendor/mammoth.browser.min.js',
@@ -24,4 +26,4 @@ if ($missing.Count -gt 0) {
   Write-Error ("Missing required PWA files: " + ($missing -join ', '))
 }
 
-Write-Output "PWA validation passed: required app shell files exist."
+Write-Output "PWA validation passed: app shell and reading desk controllers exist."
