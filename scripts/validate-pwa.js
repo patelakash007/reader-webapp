@@ -8,6 +8,7 @@ const requiredPaths = [
   'index.html',
   'style.css',
   'script.js',
+  'session-overrides.js',
   'vendor/pdf.min.js',
   'vendor/pdf.worker.min.js',
   'vendor/mammoth.browser.min.js',
@@ -17,10 +18,7 @@ const requiredPaths = [
   'icons/maskable-512.png'
 ];
 
-const missing = requiredPaths.filter(relativePath => {
-  return !fs.existsSync(path.join(rootDir, relativePath));
-});
-
+const missing = requiredPaths.filter(relativePath => !fs.existsSync(path.join(rootDir, relativePath)));
 if (missing.length > 0) {
   console.error(`Missing required PWA files: ${missing.join(', ')}`);
   process.exit(1);
@@ -28,7 +26,6 @@ if (missing.length > 0) {
 
 const manifestPath = path.join(rootDir, 'manifest.webmanifest');
 let manifest;
-
 try {
   manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 } catch (error) {
@@ -38,7 +35,6 @@ try {
 
 const requiredManifestFields = ['name', 'short_name', 'start_url', 'display', 'icons'];
 const missingFields = requiredManifestFields.filter(field => !manifest[field]);
-
 if (missingFields.length > 0) {
   console.error(`manifest.webmanifest is missing required fields: ${missingFields.join(', ')}`);
   process.exit(1);
@@ -53,7 +49,6 @@ const missingIcons = manifest.icons
   .map(icon => icon && icon.src)
   .filter(Boolean)
   .filter(src => !fs.existsSync(path.join(rootDir, src)));
-
 if (missingIcons.length > 0) {
   console.error(`manifest.webmanifest references missing icons: ${missingIcons.join(', ')}`);
   process.exit(1);
@@ -65,4 +60,10 @@ if (!indexHtml.includes('rel="manifest"') && !indexHtml.includes("rel='manifest'
   process.exit(1);
 }
 
-console.log('PWA validation passed: required app shell files and manifest metadata are valid.');
+const serviceWorker = fs.readFileSync(path.join(rootDir, 'sw.js'), 'utf8');
+if (!serviceWorker.includes("'./session-overrides.js'")) {
+  console.error('sw.js does not cache the reading-desk lifecycle controller.');
+  process.exit(1);
+}
+
+console.log('PWA validation passed: app shell, manifest metadata, local reading-desk controller, and service-worker boundary are consistent.');
