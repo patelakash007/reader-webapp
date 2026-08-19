@@ -85,7 +85,7 @@ The mobile queue is intentionally quiet: it shares the current typography, theme
 
 ## PWA and offline boundary
 
-The service worker caches only the application shell and local parser assets. `session-desk.js` is part of the app shell so the reading-desk behavior also works offline. The worker does not intercept or cache uploaded document data; user files are read from browser memory/file objects only.
+The service worker caches only the application shell and local parser assets. `session-desk.js` and `session-desk-activation.js` are part of the app shell so the reading-desk behavior also works offline. The worker does not intercept or cache uploaded document data; user files are read from browser memory/file objects only.
 
 The shell cache is versioned and old caches are removed on activation. Canonical navigation is served network-first with the cached shell as offline fallback. Non-shell same-origin requests are not added to the cache.
 
@@ -110,7 +110,8 @@ reader-webapp/
 |   |-- session-playwright.js
 |   |-- smoke-chromium.js
 |   |-- smoke-playwright.js
-|   `-- validate-pwa.js
+|   |-- validate-pwa.js
+|   `-- validate-pwa.ps1
 |-- vendor/
 |   |-- mammoth.browser.min.js
 |   |-- pdf.min.js
@@ -121,6 +122,7 @@ reader-webapp/
 |-- style.css
 |-- script.js
 |-- session-desk.js
+|-- session-desk-activation.js
 |-- sw.js
 |-- manifest.webmanifest
 |-- README.md
@@ -175,7 +177,7 @@ PDF/DOCX fixtures are created in temporary system locations and are not committe
 
 ## Performance and lifecycle notes
 
-The session stores structured text needed by the active reading flow rather than DOM snapshots. Queue updates rebuild only the small queue surface, while scroll updates use `requestAnimationFrame`. Download object URLs are revoked after use. Removed documents have their cleanup hooks invoked and are dropped from the session map so they are no longer retained by queue/listener references. Parser work is invalidated on newer reads so stale results cannot keep ownership of active reader state. The mature reader controller in `script.js` remains the source of existing theme, typography, mobile-sheet, focus-mode, editor, and TTS behavior; `session-desk.js` adds only the multi-document lifecycle and synchronization layer.
+The session stores structured text needed by the active reading flow rather than DOM snapshots. Queue updates rebuild only the small queue surface, while scroll updates use `requestAnimationFrame`. Download object URLs are revoked after use. Removed documents have their cleanup hooks invoked and are dropped from the session map so they are no longer retained by queue/listener references. Parser work is invalidated on newer reads so stale results cannot keep ownership of active reader state. The mature reader controller in `script.js` remains the source of existing theme, typography, mobile-sheet, focus-mode, editor, and TTS behavior; `session-desk.js` and `session-desk-activation.js` add only the multi-document lifecycle and activation synchronization layer.
 
 ## License
 
