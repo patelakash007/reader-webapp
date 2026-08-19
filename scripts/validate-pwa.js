@@ -8,7 +8,7 @@ const requiredPaths = [
   'index.html',
   'style.css',
   'script.js',
-  'session-overrides.js',
+  'session-desk.js',
   'vendor/pdf.min.js',
   'vendor/pdf.worker.min.js',
   'vendor/mammoth.browser.min.js',
@@ -61,7 +61,7 @@ if (!indexHtml.includes('rel="manifest"') && !indexHtml.includes("rel='manifest'
 }
 
 const serviceWorker = fs.readFileSync(path.join(rootDir, 'sw.js'), 'utf8');
-if (!serviceWorker.includes("'./session-overrides.js'")) {
+if (!serviceWorker.includes("'./session-desk.js'")) {
   console.error('sw.js does not cache the reading-desk lifecycle controller.');
   process.exit(1);
 }
