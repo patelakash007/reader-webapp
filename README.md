@@ -14,7 +14,7 @@ https://patelakash007.github.io/reader-webapp/
 
 - **Multi-Format Document Support**: Seamlessly parses and renders Pasted Text, plain text (`.txt`), Markdown (`.md`, `.markdown`), DOCX (`.docx` via local Mammoth.js), and PDF (`.pdf` via local PDF.js).
 - **Native Text-to-Speech Engine**:
-  - **Synchronized Real-Time Word Highlighting**: Active word highlighting (`.tts-word.active`) across all 32 custom theme presets.
+  - **Synchronized Real-Time Word Highlighting**: Active word highlighting (`.tts-word.active`) across all 20 custom theme presets.
   - **Smart Viewport Auto-Scrolling**: Keeps narration position comfortably centered in view with tempo-aware jitter prevention at high speeds.
   - **Click-to-Speak Navigation**: Click any word or sentence in the reader view to instantly jump narration to that position.
   - **190-Character Word-Safe Chunking**: Prevents Chromium's 15-second silent audio timeout.
@@ -24,7 +24,7 @@ https://patelakash007.github.io/reader-webapp/
   - **Background Audio Leak Prevention**: Tab lifecycle event listeners (`visibilitychange`, `pagehide`, `pageshow`) automatically pause and cleanly manage hidden tabs.
   - **Voice Discovery & Persistent Selection**: Asynchronous voice polling, compound deduplication (`name + lang`), locale-aware sorting, and multi-tier persistence ladder.
   - **Responsive Audio Controls**: Accessible Play, Pause, Resume, Stop, Voice Speed (0.5x–2.5x), and Voice Selector directly in the Listen drawer and floating bottom Audio Player Bar.
-- **32 Theme Presets & Typography Engine**: 16 Light and 16 Dark themes, typography sliders (line height, letter spacing, margins), font size presets (S/M/L/XL), and reading ruler guide.
+- **20 Theme Presets & Typography Engine**: 10 Light and 10 Dark themes, typography sliders (line height, letter spacing, margins), font size presets (S/M/L/XL), and reading ruler guide.
 - **Table of Contents & In-Context Editor**: Modal TOC dialog extracted from document headings, distraction-free Focus mode, and in-place Markdown editing with session persistence.
 - **100% Local-First & Privacy-Focused**: All file extraction, parsing, and speech synthesis execute purely inside the browser without external network telemetry.
 - **Progressive Web App (PWA) Offline Operation**: Standalone installable PWA with Service Worker precaching of all 12 app shell assets and vendor parsers.

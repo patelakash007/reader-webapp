@@ -598,3 +598,44 @@ assert.strictEqual(enforceLimit('valid text'), 'valid text');
 assert.throws(() => enforceLimit('x'.repeat(1_000_001)), /exceeds limit/);
 
 console.log('✓ Check 8: Multi-format text processing and limit enforcement passed.');
+
+// ===== 9. Preset & Theme Integrity Tests =====
+const lightPresetsMatch = scriptSource.match(/const lightPresets = (\[[\s\S]*?\n\s*\]);/);
+const darkPresetsMatch = scriptSource.match(/const darkPresets = (\[[\s\S]*?\n\s*\]);/);
+const validThemesMatch = scriptSource.match(/const VALID_THEMES = new Set\((\[[\s\S]*?\n\s*\])\);/);
+
+assert(lightPresetsMatch, 'lightPresets array must be defined in script.js');
+assert(darkPresetsMatch, 'darkPresets array must be defined in script.js');
+assert(validThemesMatch, 'VALID_THEMES set must be defined in script.js');
+
+const lightPresets = eval(lightPresetsMatch[1]);
+const darkPresets = eval(darkPresetsMatch[1]);
+const validThemes = new Set(eval(validThemesMatch[1]));
+
+assert.strictEqual(lightPresets.length, 10, `Expected exactly 10 light presets, got ${lightPresets.length}`);
+assert.strictEqual(darkPresets.length, 10, `Expected exactly 10 dark presets, got ${darkPresets.length}`);
+assert.strictEqual(validThemes.size, 20, `Expected exactly 20 valid themes, got ${validThemes.size}`);
+
+const expectedLightNames = ['Claude', 'Zen', 'Stark', 'Book', 'Classic', 'Kindle', 'GitHub', 'Amber', 'Newspaper', 'Lavender'];
+const expectedDarkNames = ['Night', 'Void', 'Carbon', 'Midnight', 'Obsidian', 'Dracula', 'Nord', 'Catppuccin', 'Forest', 'Ink'];
+
+assert.deepStrictEqual(lightPresets.map(p => p.name), expectedLightNames, 'Light preset names do not match expected 10 presets');
+assert.deepStrictEqual(darkPresets.map(p => p.name), expectedDarkNames, 'Dark preset names do not match expected 10 presets');
+
+const removedPresetNames = ['Notion', 'Apple', 'Solarized', 'Bold', 'Editor', 'Minimal', 'Rose', 'Sand', 'Paper', 'Legible', 'Creamy', 'Ivory', 'Mint', 'Peach', 'Deep', 'Onyx'];
+removedPresetNames.forEach(name => {
+  assert(!lightPresets.some(p => p.name.toLowerCase() === name.toLowerCase()), `Removed preset "${name}" was found in lightPresets`);
+  assert(!darkPresets.some(p => p.name.toLowerCase() === name.toLowerCase()), `Removed preset "${name}" was found in darkPresets`);
+});
+
+const removedThemeNames = ['notion', 'apple', 'solarized', 'slate', 'rose', 'sand', 'creamy', 'ivory', 'mint', 'peach', 'deep', 'onyx'];
+removedThemeNames.forEach(theme => {
+  assert(!validThemes.has(theme), `Removed theme "${theme}" was found in VALID_THEMES`);
+});
+
+[...lightPresets, ...darkPresets].forEach(preset => {
+  assert(validThemes.has(preset.theme), `Preset "${preset.name}" uses undefined theme "${preset.theme}"`);
+  assert(preset.name && preset.font && preset.theme && preset.color && preset.desc, `Preset "${preset.name}" is missing required fields`);
+});
+
+console.log('✓ Check 9: 10 Light and 10 Dark preset inventory and theme integrity passed.');

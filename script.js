@@ -43,10 +43,8 @@
     ]);
 
     const VALID_THEMES = new Set([
-      'claude', 'zen', 'stark', 'paper', 'cream', 'notion', 'kindle', 'apple', 'github', 'solarized',
-      'slate',
-      'rose', 'sand', 'amber', 'newspaper', 'creamy', 'ivory', 'mint', 'peach', 'lavender',
-      'dark', 'void', 'carbon', 'midnight', 'obsidian', 'dracula', 'nord', 'catppuccin', 'forest', 'ink', 'deep', 'onyx'
+      'claude', 'zen', 'stark', 'paper', 'cream', 'kindle', 'github', 'amber', 'newspaper', 'lavender',
+      'dark', 'void', 'carbon', 'midnight', 'obsidian', 'dracula', 'nord', 'catppuccin', 'forest', 'ink'
     ]);
 
     // Dynamic library configurations. Parser bundles are vendored locally.
@@ -379,24 +377,10 @@
       { name: 'Stark', font: 'sora', theme: 'stark', color: 'high', desc: 'Bold high contrast' },
       { name: 'Book', font: 'literata', theme: 'paper', color: 'warm', desc: 'Long-form book reading' },
       { name: 'Classic', font: 'merriweather', theme: 'cream', color: 'default', desc: 'Traditional print feel' },
-      { name: 'Notion', font: 'sans', theme: 'notion', color: 'default', desc: 'Crisp white workspace' },
       { name: 'Kindle', font: 'merriweather', theme: 'kindle', color: 'warm', desc: 'E-ink sepia warmth' },
-      { name: 'Apple', font: 'sans', theme: 'apple', color: 'default', desc: 'Clean system aesthetic' },
       { name: 'GitHub', font: 'sans', theme: 'github', color: 'default', desc: 'Developer favourite' },
-      { name: 'Solarized', font: 'literata', theme: 'solarized', color: 'default', desc: 'Famous light tone' },
-      { name: 'Bold', font: 'bold', theme: 'cream', color: 'high', desc: 'Maximum contrast loud' },
-      { name: 'Editor', font: 'serif', theme: 'cream', color: 'default', desc: 'Magazine editorial' },
-      { name: 'Minimal', font: 'outfit', theme: 'slate', color: 'cool', desc: 'Modern grey focus' },
-      { name: 'Rose', font: 'clean', theme: 'rose', color: 'warm', desc: 'Soft rose light' },
-      { name: 'Sand', font: 'clean', theme: 'sand', color: 'warm', desc: 'Desert warmth' },
       { name: 'Amber', font: 'atkinson', theme: 'amber', color: 'high', desc: 'High contrast warm' },
-      { name: 'Paper', font: 'atkinson', theme: 'paper', color: 'high', desc: 'Dyslexia friendly' },
-      { name: 'Legible', font: 'atkinson', theme: 'slate', color: 'high', desc: 'Max readability' },
       { name: 'Newspaper', font: 'merriweather', theme: 'newspaper', color: 'default', desc: 'Old school print' },
-      { name: 'Creamy', font: 'libre', theme: 'creamy', color: 'warm', desc: 'Soft golden cream' },
-      { name: 'Ivory', font: 'literata', theme: 'ivory', color: 'default', desc: 'Gentle ivory tone' },
-      { name: 'Mint', font: 'jakarta', theme: 'mint', color: 'default', desc: 'Fresh soft green' },
-      { name: 'Peach', font: 'manrope', theme: 'peach', color: 'warm', desc: 'Warm peach glow' },
       { name: 'Lavender', font: 'clean', theme: 'lavender', color: 'default', desc: 'Soft purple calm' }
     ];
 
@@ -410,9 +394,7 @@
       { name: 'Nord', font: 'jakarta', theme: 'nord', color: 'soft', desc: 'Arctic blue dark' },
       { name: 'Catppuccin', font: 'clean', theme: 'catppuccin', color: 'soft', desc: 'Pastel dark cozy' },
       { name: 'Forest', font: 'jakarta', theme: 'forest', color: 'soft', desc: 'Green night easy' },
-      { name: 'Ink', font: 'literata', theme: 'ink', color: 'soft', desc: 'Navy scholarly' },
-      { name: 'Deep', font: 'manrope', theme: 'deep', color: 'soft', desc: 'Deep ocean blue' },
-      { name: 'Onyx', font: 'oswald', theme: 'onyx', color: 'soft', desc: 'Warm black stone' }
+      { name: 'Ink', font: 'literata', theme: 'ink', color: 'soft', desc: 'Navy scholarly' }
     ];
 
     const textColorMap = {
