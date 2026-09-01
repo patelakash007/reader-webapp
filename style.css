@@ -17,34 +17,22 @@
   .theme-paper { --bg: #faf8f3; --card: #f0ece4; --text: #2c1810; --text2: #6b5b50; --accent: #c45c26; --ui-positive: #2e7d32; --toolbar-bg: rgba(240,236,228,0.95); --reader-text-color: #2c1810; }
   .theme-cream { --bg: #fbfaf8; --card: #f2efe9; --text: #1c1b1a; --text2: #6e6a62; --accent: #9a3524; --ui-positive: #347a46; --toolbar-bg: rgba(251,250,248,0.95); --reader-text-color: #1c1b1a; }
   .theme-ink { --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --text2: #94a3b8; --accent: #38bdf8; --ui-positive: #4ade80; --toolbar-bg: rgba(30,41,59,0.95); --reader-text-color: #e2e8f0; }
-  .theme-rose { --bg: #fdf2f4; --card: #fae8ec; --text: #3d0f1a; --text2: #6b2e3b; --accent: #b91c4a; --ui-positive: #2e7d32; --toolbar-bg: rgba(250,232,236,0.95); --reader-text-color: #3d0f1a; }
-  .theme-sand { --bg: #f7f3e8; --card: #efe8d8; --text: #3d2e1a; --text2: #6b5a40; --accent: #8b6914; --ui-positive: #2e7d32; --toolbar-bg: rgba(239,232,216,0.95); --reader-text-color: #3d2e1a; }
-  .theme-slate { --bg: #f1f5f9; --card: #e2e8f0; --text: #0f172a; --text2: #475569; --accent: #334155; --ui-positive: #2e7d32; --toolbar-bg: rgba(226,232,240,0.95); --reader-text-color: #0f172a; }
   .theme-midnight { --bg: #0a0a0f; --card: #14141f; --text: #d4d4e0; --text2: #8888a0; --accent: #a78bfa; --ui-positive: #4ade80; --toolbar-bg: rgba(20,20,31,0.95); --reader-text-color: #d4d4e0; }
   .theme-amber { --bg: #fffbeb; --card: #fef3c7; --text: #451a03; --text2: #92400e; --accent: #b45309; --ui-positive: #2e7d32; --toolbar-bg: rgba(254,243,199,0.95); --reader-text-color: #451a03; }
   .theme-forest { --bg: #1c2e1c; --card: #243824; --text: #e2e8d8; --text2: #8faa80; --accent: #6b9e5e; --ui-positive: #4ade80; --toolbar-bg: rgba(36,56,36,0.95); --reader-text-color: #e2e8d8; }
   .theme-claude { --bg: #faf8f5; --card: #f5f2ed; --text: #2d2a26; --text2: #6b6560; --accent: #8b5e3c; --ui-positive: #2e7d32; --toolbar-bg: rgba(245,242,237,0.95); --reader-text-color: #2d2a26; }
-  .theme-notion { --bg: #ffffff; --card: #f5f5f5; --text: #37352f; --text2: #787774; --accent: #37352f; --ui-positive: #2e7d32; --toolbar-bg: rgba(245,245,245,0.95); --reader-text-color: #37352f; }
   .theme-kindle { --bg: #f4ecd8; --card: #ebe0c8; --text: #5c4b37; --text2: #786854; --accent: #8b6914; --ui-positive: #2e7d32; --toolbar-bg: rgba(235,224,200,0.95); --reader-text-color: #5c4b37; }
   .theme-obsidian { --bg: #1e1e1e; --card: #2d2d2d; --text: #d4d4d4; --text2: #858585; --accent: #7ee787; --ui-positive: #4ade80; --toolbar-bg: rgba(45,45,45,0.95); --reader-text-color: #d4d4d4; }
-  .theme-apple { --bg: #f5f5f7; --card: #eaeaf0; --text: #1d1d1f; --text2: #6e6e73; --accent: #0071e3; --ui-positive: #2e7d32; --toolbar-bg: rgba(234,234,240,0.95); --reader-text-color: #1d1d1f; }
   .theme-github { --bg: #ffffff; --card: #f6f8fa; --text: #24292f; --text2: #656d76; --accent: #0969da; --ui-positive: #2e7d32; --toolbar-bg: rgba(246,248,250,0.95); --reader-text-color: #24292f; }
   .theme-dracula { --bg: #282a36; --card: #44475a; --text: #f8f8f2; --text2: #6272a4; --accent: #bd93f9; --ui-positive: #50fa7b; --toolbar-bg: rgba(68,71,90,0.95); --reader-text-color: #f8f8f2; }
-  .theme-solarized { --bg: #fdf6e3; --card: #eee8d5; --text: #073642; --text2: #586e75; --accent: #b58900; --ui-positive: #859900; --toolbar-bg: rgba(238,232,213,0.95); --reader-text-color: #073642; }
   .theme-nord { --bg: #2e3440; --card: #3b4252; --text: #d8dee9; --text2: #81a1c1; --accent: #88c0d0; --ui-positive: #a3be8c; --toolbar-bg: rgba(59,66,82,0.95); --reader-text-color: #d8dee9; }
   .theme-catppuccin { --bg: #1e1e2e; --card: #302d41; --text: #cdd6f4; --text2: #a6adc8; --accent: #f5c2e7; --ui-positive: #a6e3a1; --toolbar-bg: rgba(48,45,65,0.95); --reader-text-color: #cdd6f4; }
   .theme-zen { --bg: #ffffff; --card: #f8f8f8; --text: #1a1a1a; --text2: #666666; --accent: #1a1a1a; --ui-positive: #2e7d32; --toolbar-bg: rgba(248,248,248,0.95); --reader-text-color: #1a1a1a; }
   .theme-stark { --bg: #ffffff; --card: #f0f0f0; --text: #000000; --text2: #333333; --accent: #000000; --ui-positive: #2e7d32; --toolbar-bg: rgba(240,240,240,0.95); --reader-text-color: #000000; }
   .theme-newspaper { --bg: #f0ece0; --card: #e5dfd0; --text: #2b2b2b; --text2: #5a5a5a; --accent: #8b0000; --ui-positive: #2e7d32; --toolbar-bg: rgba(229,223,208,0.95); --reader-text-color: #2b2b2b; }
-  .theme-creamy { --bg: #fff8e7; --card: #fff0cc; --text: #4a3b2a; --text2: #706050; --accent: #b8860b; --ui-positive: #2e7d32; --toolbar-bg: rgba(255,240,204,0.95); --reader-text-color: #4a3b2a; }
-  .theme-ivory { --bg: #fffff0; --card: #f5f5e0; --text: #333333; --text2: #666666; --accent: #556b2f; --ui-positive: #2e7d32; --toolbar-bg: rgba(245,245,224,0.95); --reader-text-color: #333333; }
-  .theme-mint { --bg: #f0fff4; --card: #e0f5e8; --text: #1a3a2a; --text2: #4a7a5a; --accent: #2d6a4f; --ui-positive: #2e7d32; --toolbar-bg: rgba(224,245,232,0.95); --reader-text-color: #1a3a2a; }
-  .theme-peach { --bg: #fff5ee; --card: #ffe4d6; --text: #4a2a1a; --text2: #7a5a4a; --accent: #c45c26; --ui-positive: #2e7d32; --toolbar-bg: rgba(255,228,214,0.95); --reader-text-color: #4a2a1a; }
   .theme-lavender { --bg: #f5f0ff; --card: #ebe0ff; --text: #3a1a5a; --text2: #6a4a8a; --accent: #7c3aed; --ui-positive: #2e7d32; --toolbar-bg: rgba(235,224,255,0.95); --reader-text-color: #3a1a5a; }
   .theme-void { --bg: #000000; --card: #111111; --text: #e0e0e0; --text2: #666666; --accent: #ff6b6b; --ui-positive: #4ade80; --toolbar-bg: rgba(17,17,17,0.95); --reader-text-color: #e0e0e0; }
   .theme-carbon { --bg: #121212; --card: #1e1e1e; --text: #e0e0e0; --text2: #888888; --accent: #bb86fc; --ui-positive: #4ade80; --toolbar-bg: rgba(30,30,30,0.95); --reader-text-color: #e0e0e0; }
-  .theme-deep { --bg: #0a0e27; --card: #12183a; --text: #c7d2fe; --text2: #818cf8; --accent: #6366f1; --ui-positive: #4ade80; --toolbar-bg: rgba(18,24,58,0.95); --reader-text-color: #c7d2fe; }
-  .theme-onyx { --bg: #0d0d0d; --card: #1a1a1a; --text: #f5f0e8; --text2: #8a8a8a; --accent: #e8a87c; --ui-positive: #4ade80; --toolbar-bg: rgba(26,26,26,0.95); --reader-text-color: #f5f0e8; }
 
   * { box-sizing: border-box; }
   html, body {
@@ -134,9 +122,7 @@
   .theme-nord .reading-ruler,
   .theme-catppuccin .reading-ruler,
   .theme-void .reading-ruler,
-  .theme-carbon .reading-ruler,
-  .theme-deep .reading-ruler,
-  .theme-onyx .reading-ruler {
+  .theme-carbon .reading-ruler {
     background: rgba(255, 255, 255, 0.06);
     border-top-color: rgba(255, 255, 255, 0.2);
     border-bottom-color: rgba(255, 255, 255, 0.2);
