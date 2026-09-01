@@ -449,6 +449,124 @@
     color: var(--text);
   }
 
+  /* Synchronized TTS Word Highlighting */
+  .tts-word {
+    display: inline;
+    border-radius: 4px;
+    padding: 1px 2px;
+    margin: -1px -2px;
+    cursor: pointer;
+    transition: background-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+  }
+  .tts-word:hover {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+  .tts-word.active {
+    background: var(--accent);
+    color: var(--bg) !important;
+    border-radius: 4px;
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+
+  /* Floating Audio Player Bar */
+  .audio-player-bar {
+    position: fixed;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    left: 50%;
+    transform: translate3d(-50%, 120%, 0);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 950;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--card);
+    border: 1px solid rgba(154, 53, 36, 0.2);
+    border-radius: 9999px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease;
+    max-width: calc(100vw - 32px);
+  }
+  .audio-player-bar.active {
+    transform: translate3d(-50%, 0, 0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .focus-mode-active .audio-player-bar {
+    display: none !important;
+  }
+  .audio-bar-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1.5px solid var(--accent);
+    background: var(--accent);
+    color: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 14px;
+    transition: transform 0.1s ease, opacity 0.2s ease;
+    flex-shrink: 0;
+  }
+  .audio-bar-btn:active {
+    transform: scale(0.92);
+  }
+  .audio-bar-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+  }
+  #audioStopBtn {
+    background: transparent;
+    color: var(--accent);
+    border-color: rgba(154, 53, 36, 0.3);
+  }
+  .audio-bar-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 100px;
+    max-width: 180px;
+    line-height: 1.2;
+  }
+  .audio-bar-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .audio-bar-hint {
+    font-size: 11px;
+    color: var(--text2);
+    white-space: nowrap;
+  }
+  .audio-bar-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .audio-bar-chip {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+    border: 1px solid rgba(154, 53, 36, 0.2);
+    border-radius: 12px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  .audio-bar-chip:hover {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
   /* Full-width Toolbar Style */
   #toolbar {
     position: fixed; top: env(safe-area-inset-top, 0px); left: env(safe-area-inset-left, 0px); right: env(safe-area-inset-right, 0px);
