@@ -157,6 +157,7 @@
             <div class="settings-panel-inner">
               <div class="tool-grid compact-tool-grid">
                 <button class="tb-btn" id="ttsBtn" type="button" title="Start Read Aloud" aria-label="Start Read Aloud" aria-pressed="false"><span aria-hidden="true">&#x1F50A;</span> Read Aloud</button>
+                <button class="tb-btn" id="ttsStopBtn" type="button" title="Stop Read Aloud" aria-label="Stop Read Aloud" disabled><span aria-hidden="true">&#x23F9;</span> Stop</button>
                 <button class="tb-btn" id="autoScrollBtn" type="button" title="Start Auto Scroll" aria-label="Start Auto Scroll" aria-pressed="false"><span aria-hidden="true">&#x25B6;</span> Auto-scroll</button>
               </div>
               <div class="settings-row">
@@ -208,6 +209,19 @@
     <div class="wordcount" id="wordCount"></div>
     <div class="status-message reader-status-message" id="readerStatusMessage" role="status" aria-live="polite"></div>
     <button id="focusRestore" type="button" title="Show UI" aria-label="Show UI"><span aria-hidden="true">&#8853;</span></button>
+
+    <!-- Floating Audio Player Bar -->
+    <div class="audio-player-bar" id="audioPlayerBar" role="region" aria-label="Audio player controls">
+      <button class="audio-bar-btn" id="audioPlayPauseBtn" type="button" title="Play or Pause narration" aria-label="Play or Pause narration"><span aria-hidden="true">&#x25B6;</span></button>
+      <button class="audio-bar-btn" id="audioStopBtn" type="button" title="Stop narration" aria-label="Stop narration" disabled><span aria-hidden="true">&#x23F9;</span></button>
+      <div class="audio-bar-info">
+        <span class="audio-bar-title" id="audioStatusText">Speech Ready</span>
+        <span class="audio-bar-hint">Click word to speak</span>
+      </div>
+      <div class="audio-bar-actions">
+        <button class="audio-bar-chip" id="audioSpeedBtn" type="button" title="Narration speed">1.0x</button>
+      </div>
+    </div>
   </section>
 
   <div id="gestureHint">

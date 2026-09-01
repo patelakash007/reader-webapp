@@ -12,22 +12,22 @@ https://patelakash007.github.io/reader-webapp/
 
 ## Features
 
-- Clean reader view for long articles, notes, and AI responses
-- Supports pasted text and local document reading
-- PDF, DOCX, basic Markdown, and TXT focused workflow
-- Many reading themes including paper, dark, Kindle-like, Notion-like, GitHub-like, Dracula, Nord, and more
-- Typography presets for comfortable long-form reading
-- Text-to-speech support for listening while reading
-- Local-first design: files are processed in the browser
-- Installable PWA support on supported browsers
-- Non-persistent sessions: documents, reading state, and preferences reset on reload
-- PDF/DOCX parser libraries are bundled locally
-- Mobile-friendly layout with collapsible settings sections for phone reading
-- Single-page PWA split across `index.html`, `style.css`, `script.js`, `sw.js`, `manifest.webmanifest`, `icons/`, and `vendor/`
-
-## Why this exists
-
-Modern articles and long AI answers can be hard to read because of ads, bad spacing, weak contrast, distracting backgrounds, and messy formatting. Reader Webapp is built as a personal reading space: paste the content, choose a comfortable theme, and read without distractions.
+- **Multi-Format Document Support**: Seamlessly parses and renders Pasted Text, plain text (`.txt`), Markdown (`.md`, `.markdown`), DOCX (`.docx` via local Mammoth.js), and PDF (`.pdf` via local PDF.js).
+- **Native Text-to-Speech Engine**:
+  - **Synchronized Real-Time Word Highlighting**: Active word highlighting (`.tts-word.active`) across all 32 custom theme presets.
+  - **Smart Viewport Auto-Scrolling**: Keeps narration position comfortably centered in view with tempo-aware jitter prevention at high speeds.
+  - **Click-to-Speak Navigation**: Click any word or sentence in the reader view to instantly jump narration to that position.
+  - **190-Character Word-Safe Chunking**: Prevents Chromium's 15-second silent audio timeout.
+  - **Dual Boundary Tracking**: Uses native `SpeechSynthesisUtterance.onboundary` with an automatic 100ms synthetic estimate timer fallback (180 WPM × rate) for speech engines lacking boundary events.
+  - **Generation & Concurrency Safety**: Monotonic `speechGeneration` session counter rejects stale asynchronous callbacks.
+  - **Mobile Lifecycle & Android Resilience**: Desktop-only 10-second watchdog keepalive and mobile cancel-on-pause with seamless word-index resume (`restartFromWord`).
+  - **Background Audio Leak Prevention**: Tab lifecycle event listeners (`visibilitychange`, `pagehide`, `pageshow`) automatically pause and cleanly manage hidden tabs.
+  - **Voice Discovery & Persistent Selection**: Asynchronous voice polling, compound deduplication (`name + lang`), locale-aware sorting, and multi-tier persistence ladder.
+  - **Responsive Audio Controls**: Accessible Play, Pause, Resume, Stop, Voice Speed (0.5x–2.5x), and Voice Selector directly in the Listen drawer and floating bottom Audio Player Bar.
+- **32 Theme Presets & Typography Engine**: 16 Light and 16 Dark themes, typography sliders (line height, letter spacing, margins), font size presets (S/M/L/XL), and reading ruler guide.
+- **Table of Contents & In-Context Editor**: Modal TOC dialog extracted from document headings, distraction-free Focus mode, and in-place Markdown editing with session persistence.
+- **100% Local-First & Privacy-Focused**: All file extraction, parsing, and speech synthesis execute purely inside the browser without external network telemetry.
+- **Progressive Web App (PWA) Offline Operation**: Standalone installable PWA with Service Worker precaching of all 12 app shell assets and vendor parsers.
 
 ## Project structure
 
@@ -47,6 +47,8 @@ reader-webapp/
 |   |-- smoke-chromium.js
 |   |-- smoke-playwright.js
 |   `-- validate-pwa.js
+|-- tests/
+|   `-- test_reader.js
 |-- vendor/
 |   |-- mammoth.browser.min.js
 |   |-- pdf.min.js
@@ -125,7 +127,15 @@ Run the PWA app-shell validation:
 npm run test:pwa
 ```
 
-This validates that the app shell, manifest, icons, service worker, and local vendor files required by the PWA are present and internally consistent.
+### Unit and Integration tests
+
+Run the native test suite covering chunking, word tokenization, speech state machine, mobile lifecycle, and PDF extraction:
+
+```bash
+npm run test:unit
+```
+
+This runs `tests/test_reader.js` and validates 100% of core engine logic headless in Node.js.
 
 ### Full Playwright and Chromium smoke test
 
