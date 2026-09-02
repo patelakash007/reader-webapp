@@ -1,5 +1,5 @@
-import path from 'node:path';
-import {
+const path = require('node:path');
+const {
   browserEnvVars,
   ensureOutputDir,
   findBrowserExecutable,
@@ -7,15 +7,14 @@ import {
   startStaticServer,
   waitForServer,
   writeJson
-} from './browser-smoke-utils.js';
+} = require('./browser-smoke-utils');
 
-async function loadPlaywright() {
+function loadPlaywright() {
   for (const packageName of ['playwright-core', 'playwright']) {
     try {
-      const module = await import(packageName);
-      return { packageName, module: module.default || module };
+      return { packageName, module: require(packageName) };
     } catch (error) {
-      if (error.code !== 'ERR_MODULE_NOT_FOUND' && error.code !== 'MODULE_NOT_FOUND') throw error;
+      if (error.code !== 'MODULE_NOT_FOUND') throw error;
     }
   }
 
@@ -24,12 +23,12 @@ async function loadPlaywright() {
 
 async function runPlaywrightSmoke() {
   ensureOutputDir();
-  const playwright = await loadPlaywright();
+  const playwright = loadPlaywright();
 
   if (!playwright) {
     console.warn('Playwright smoke skipped: neither playwright-core nor playwright is available to Node.');
     console.warn('Falling back to Chromium-only smoke. Install npm dependencies to enable Playwright interaction checks.');
-    await import('./smoke-chromium.js');
+    require('./smoke-chromium');
     return;
   }
 

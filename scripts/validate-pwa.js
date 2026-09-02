@@ -1,9 +1,5 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const fs = require('node:fs');
+const path = require('node:path');
 
 const rootDir = path.resolve(__dirname, '..');
 const requiredPaths = [
@@ -11,14 +7,7 @@ const requiredPaths = [
   'sw.js',
   'index.html',
   'style.css',
-  'app.js',
-  'reader.js',
-  'parser.js',
-  'tts.js',
-  'settings.js',
-  'storage.js',
-  'ui.js',
-  'utils.js',
+  'script.js',
   'vendor/pdf.min.js',
   'vendor/pdf.worker.min.js',
   'vendor/mammoth.browser.min.js',

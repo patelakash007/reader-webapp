@@ -1,7 +1,7 @@
-import fs from 'node:fs';
-import http from 'node:http';
-import path from 'node:path';
-import {
+const fs = require('node:fs');
+const http = require('node:http');
+const path = require('node:path');
+const {
   browserEnvVars,
   ensureOutputDir,
   findBrowserExecutable,
@@ -9,19 +9,18 @@ import {
   startStaticServer,
   waitForServer,
   writeJson
-} from './browser-smoke-utils.js';
+} = require('./browser-smoke-utils');
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-async function loadPlaywright() {
+function loadPlaywright() {
   for (const packageName of ['playwright-core', 'playwright']) {
     try {
-      const module = await import(packageName);
-      return { packageName, module: module.default || module };
+      return { packageName, module: require(packageName) };
     } catch (error) {
-      if (error.code !== 'ERR_MODULE_NOT_FOUND' && error.code !== 'MODULE_NOT_FOUND') throw error;
+      if (error.code !== 'MODULE_NOT_FOUND') throw error;
     }
   }
 
@@ -94,7 +93,7 @@ async function expandSettingsSection(page, sectionName) {
 
 async function runDeepPlaywrightChecks() {
   ensureOutputDir();
-  const playwright = await loadPlaywright();
+  const playwright = loadPlaywright();
 
   if (!playwright) {
     throw new Error('Deep Playwright checks require playwright-core or playwright.');

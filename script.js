@@ -1,0 +1,2947 @@
+  (function () {
+    'use strict';
+
+    // ===== Constants and Startup Cleanup =====
+    function cleanupLegacyBrowserStorage() {
+      const legacyKeys = [
+        'reader_text',
+        'reader_scroll',
+        'reader_size',
+        'reader_mode',
+        'reader_preset_index',
+        'reader_font',
+        'reader_theme',
+        'reader_textcolor',
+        'reader_smart_headings',
+        'reader_remember_document',
+        'reader_lineheight',
+        'reader_letterspacing',
+        'reader_margin',
+        'reader_voice_rate',
+        'reader_voice_uri',
+        'reader_scroll_speed'
+      ];
+
+      try {
+        const legacyStore = window.localStorage;
+        if (!legacyStore) return;
+        legacyKeys.forEach(key => legacyStore.removeItem(key));
+      } catch (err) {
+        console.warn('Unable to clean up legacy reader storage.', err);
+      }
+    }
+
+    const VALID_SIZES = new Set(['small', 'medium', 'large', 'xl']);
+    const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown']);
+    const SUPPORTED_EXTENSIONS = new Set([...TEXT_EXTENSIONS, 'pdf', 'docx']);
+    const MAX_FILE_SIZE = 15 * 1024 * 1024;
+    const MAX_EXTRACTED_TEXT_CHARS = 1_000_000;
+    const MAX_PDF_PAGES = 500;
+
+    const VALID_FONTS = new Set([
+      'sans', 'serif', 'minimal', 'bold', 'clean', 'literata', 'merriweather', 'libre', 'atkinson', 'jakarta', 'outfit', 'bebas', 'oswald', 'manrope', 'sora'
+    ]);
+
+    const VALID_THEMES = new Set([
+      'claude', 'zen', 'stark', 'paper', 'cream', 'kindle', 'github', 'amber', 'newspaper', 'lavender',
+      'dark', 'void', 'carbon', 'midnight', 'obsidian', 'dracula', 'nord', 'catppuccin', 'forest', 'ink'
+    ]);
+
+    // Dynamic library configurations. Parser bundles are vendored locally.
+    const LIBRARIES = {
+      pdf: {
+        src: 'vendor/pdf.min.js',
+        check: () => window.pdfjsLib,
+        onLoad: () => {
+          if (window.pdfjsLib) {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
+          }
+        }
+      },
+      mammoth: {
+        src: 'vendor/mammoth.browser.min.js',
+        check: () => window.mammoth
+      }
+    };
+
+    const loadedLibraries = new Map();
+
+    // Promise-based dynamic loader for local parser bundles.
+    function loadLibrary(name) {
+      if (loadedLibraries.has(name)) {
+        return loadedLibraries.get(name);
+      }
+
+      const promise = new Promise((resolve, reject) => {
+        const lib = LIBRARIES[name];
+        if (!lib) return reject(new Error('Unknown library: ' + name));
+
+        if (lib.check()) {
+          if (lib.onLoad) lib.onLoad();
+          resolve(lib.check());
+          return;
+        }
+
+        function createScript() {
+          const script = document.createElement('script');
+          script.src = lib.src;
+          script.onload = () => {
+            try {
+              if (lib.onLoad) lib.onLoad();
+              if (lib.check()) {
+                resolve(lib.check());
+              } else {
+                reject(new Error(`Library ${name} loaded but could not be initialized.`));
+              }
+            } catch (err) {
+              reject(err);
+            }
+          };
+          script.onerror = () => {
+            reject(new Error(`Failed to load local parser library ${name} from ${lib.src}. Check that the vendor file is available.`));
+          };
+          document.head.appendChild(script);
+        }
+
+        createScript();
+      });
+
+      loadedLibraries.set(name, promise);
+      promise.catch(() => loadedLibraries.delete(name));
+      return promise;
+    }
+
+    const els = {
+      inputView: document.getElementById('inputView'),
+      readerView: document.getElementById('readerView'),
+      readerContent: document.getElementById('readerContent'),
+      pasteArea: document.getElementById('pasteArea'),
+      readBtn: document.getElementById('readBtn'),
+      fileInput: document.getElementById('fileInput'),
+      clearBtn: document.getElementById('clearBtn'),
+      loader: document.getElementById('loader'),
+      loaderText: document.querySelector('.loader-text'),
+      toolbar: document.getElementById('toolbar'),
+      backBtn: document.getElementById('backBtn'),
+      wordCount: document.getElementById('wordCount'),
+      focusRestore: document.getElementById('focusRestore'),
+      presetTrack: document.getElementById('presetTrack'),
+      presetDots: document.getElementById('presetDots'),
+      presetWindow: document.getElementById('presetWindow'),
+      modeLight: document.getElementById('modeLight'),
+      modeDark: document.getElementById('modeDark'),
+      focusBtn: document.getElementById('focusBtn'),
+      fullscreenBtn: document.getElementById('fullscreenBtn'),
+      autoScrollBtn: document.getElementById('autoScrollBtn'),
+      ttsBtn: document.getElementById('ttsBtn'),
+      ttsStopBtn: document.getElementById('ttsStopBtn'),
+      audioPlayerBar: document.getElementById('audioPlayerBar'),
+      audioPlayPauseBtn: document.getElementById('audioPlayPauseBtn'),
+      audioStopBtn: document.getElementById('audioStopBtn'),
+      audioStatusText: document.getElementById('audioStatusText'),
+      audioSpeedBtn: document.getElementById('audioSpeedBtn'),
+      downloadBtn: document.getElementById('downloadBtn'),
+      editBtn: document.getElementById('editBtn'),
+      gestureHint: document.getElementById('gestureHint'),
+      gestureHintText: document.getElementById('gestureHintText'),
+      arrowLeft: document.getElementById('arrowLeft'),
+      arrowRight: document.getElementById('arrowRight'),
+      progressBar: document.getElementById('progressBar'),
+      statusMessage: document.getElementById('statusMessage'),
+      readerStatusMessage: document.getElementById('readerStatusMessage'),
+      tocDialog: document.getElementById('tocDialog'),
+      closeTocBtn: document.getElementById('closeTocBtn'),
+      tocBody: document.getElementById('tocBody'),
+      tocBtn: document.getElementById('tocBtn'),
+      rulerBtn: document.getElementById('rulerBtn'),
+      readingRuler: document.getElementById('readingRuler'),
+      settingsDrawer: document.getElementById('settingsDrawer'),
+      settingsSections: Array.from(document.querySelectorAll('[data-settings-section]')),
+      settingsSectionToggles: Array.from(document.querySelectorAll('.settings-section-toggle')),
+      themeSettingsSummary: document.getElementById('themeSettingsSummary'),
+      voiceSelect: document.getElementById('voiceSelect'),
+      voiceRateInput: document.getElementById('voiceRateInput'),
+      voiceRateVal: document.getElementById('voiceRateVal'),
+      scrollSpeedInput: document.getElementById('scrollSpeedInput'),
+      scrollSpeedVal: document.getElementById('scrollSpeedVal'),
+      lineHeightInput: document.getElementById('lineHeightInput'),
+      letterSpacingInput: document.getElementById('letterSpacingInput'),
+      marginInput: document.getElementById('marginInput'),
+      smartHeadingsInput: document.getElementById('smartHeadingsInput'),
+      mobileFab: document.getElementById('mobileFab'),
+      sheetBackdrop: document.getElementById('sheetBackdrop'),
+      bottomSheetHandle: document.getElementById('bottomSheetHandle'),
+      editingBanner: document.getElementById('editingBanner'),
+      saveEditBannerBtn: document.getElementById('saveEditBannerBtn')
+    };
+
+    const state = {
+      currentText: '',
+      focusMode: false,
+      currentPresetIndex: 0,
+      currentMode: 'light',
+      currentTextColor: 'default',
+      toolbarTimer: null,
+      gestureHintTimer: null,
+      statusTimer: null,
+      dragStartX: 0,
+      dragCurrentX: 0,
+      dragStartIndex: 0,
+      isDraggingCarousel: false,
+      carouselWidth: 0,
+      gestureStartX: 0,
+      gestureStartY: 0,
+      gestureStartTime: 0,
+      isGesture: false,
+      isEditing: false,
+      smartHeadings: true,
+      wordCountTimer: null,
+      lastCarouselDragDistance: 0
+    };
+
+    let isAutoScrolling = false;
+    let autoScrollSpeed = 0.04;
+    let lastScrollTime = 0;
+    let scrollAccumulator = 0;
+    
+    const speechSupported = typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+    const synth = speechSupported ? window.speechSynthesis : null;
+
+    const STATE_IDLE = 'idle';
+    const STATE_PLAYING = 'playing';
+    const STATE_PAUSED = 'paused';
+
+    const CHUNK_TARGET = 190;
+    const WORDS_PER_MIN = 180;
+    const BOUNDARY_FALLBACK_MS = 100;
+    const VOICE_POLL_MS = 250;
+    const VOICE_POLL_TIMEOUT = 5000;
+    const KEEP_ALIVE_MS = 10000;
+    const PAGEHIDE_CANCEL_TIMEOUT = 15000;
+
+    const isMobile = typeof navigator !== 'undefined' && (/Android/i.test(navigator.userAgent) ||
+      (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches));
+
+    let voices = [];
+    let wordMeta = [];
+    let wordSpans = [];
+    let fullSpokenText = '';
+    let chunks = [];
+    let chunkIndex = 0;
+    let currentUtterance = null;
+    let currentWordIndex = -1;
+    let ttsState = STATE_IDLE;
+    let ttsFinishing = false;
+    let chunkHasBoundary = false;
+    let estimateTimer = null;
+    let keepAliveTimer = null;
+    let pageHideTimer = null;
+    let speechGeneration = 0;
+    let visibilityInterrupted = false;
+    let speechCanceledWhileHidden = false;
+    let isSpeaking = false;
+    let editDebounceTimer = null;
+    let lastActiveElement = null;
+    let activeRenderId = 0;
+    let activeReadToken = 0;
+
+    // ===== Status & Loader UI Functions =====
+    function updateStatusTarget(target, message, type) {
+      if (!target) return;
+      const baseClass = target === els.readerStatusMessage ? 'status-message reader-status-message' : 'status-message';
+      target.textContent = message || '';
+      target.className = message ? `${baseClass} show ${type}` : baseClass;
+    }
+
+    function showStatus(message, type = 'info') {
+      if (!els.statusMessage && !els.readerStatusMessage) return;
+      if (!message) {
+        clearStatus();
+        return;
+      }
+      updateStatusTarget(els.statusMessage, message, type);
+      updateStatusTarget(els.readerStatusMessage, message, type);
+      window.clearTimeout(state.statusTimer);
+      state.statusTimer = window.setTimeout(clearStatus, 4500);
+    }
+
+    function clearStatus() {
+      updateStatusTarget(els.statusMessage, '', 'info');
+      updateStatusTarget(els.readerStatusMessage, '', 'info');
+    }
+
+    function showLoader(message = 'Loading text...') {
+      if (els.loader && els.loaderText) {
+        els.loaderText.textContent = message;
+        els.loader.classList.add('active');
+      }
+    }
+
+    function hideLoader() {
+      if (els.loader) {
+        els.loader.classList.remove('active');
+      }
+    }
+
+    function formatError(err) {
+      return err && err.message ? err.message : 'Unknown error';
+    }
+
+    function enforceExtractedTextLimit(text, context = 'document') {
+      const value = typeof text === 'string' ? text : '';
+      if (value.length > MAX_EXTRACTED_TEXT_CHARS) {
+        throw new Error(`This ${context} contains too much extracted text for the browser reader. Limit is ${MAX_EXTRACTED_TEXT_CHARS.toLocaleString()} characters.`);
+      }
+      return value;
+    }
+
+    function clampNumber(value, fallback, min, max) {
+      const parsed = Number.parseFloat(value);
+      if (!Number.isFinite(parsed)) return fallback;
+      return Math.min(Math.max(parsed, min), max);
+    }
+
+    function getElementTarget(target) {
+      return target instanceof Element ? target : null;
+    }
+
+    function getScrollTop() {
+      return window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    }
+
+    function beginFileRead() {
+      activeReadToken += 1;
+      return activeReadToken;
+    }
+
+    function cancelPendingFileRead() {
+      activeReadToken += 1;
+    }
+
+    function isActiveFileRead(readToken) {
+      return readToken === activeReadToken;
+    }
+
+    function createStaleReadError() {
+      const err = new Error('Stale file read ignored.');
+      err.name = 'StaleFileReadError';
+      return err;
+    }
+
+    function assertActiveFileRead(readToken) {
+      if (!isActiveFileRead(readToken)) throw createStaleReadError();
+    }
+
+    function isStaleReadError(err) {
+      return err && err.name === 'StaleFileReadError';
+    }
+
+    function showReadLoader(readToken, message) {
+      if (isActiveFileRead(readToken)) showLoader(message);
+    }
+
+    function cancelPendingRender(options = {}) {
+      activeRenderId += 1;
+      if (options.clearContent && els.readerContent) {
+        els.readerContent.textContent = '';
+      }
+    }
+
+    // ===== Presets and Custom Typography Colors =====
+    const loadedFonts = new Set(['sans', 'serif']);
+    const systemSans = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    const systemSerif = 'Georgia, "Times New Roman", serif';
+    const systemMono = 'ui-monospace, SFMono-Regular, Consolas, monospace';
+    const fontMap = {
+      serif: { family: systemSerif, weight: 500, url: null },
+      sans: { family: systemSans, weight: 600, url: null },
+      minimal: { family: systemSans, weight: 700, url: null },
+      bold: { family: systemSans, weight: 800, url: null },
+      clean: { family: systemSans, weight: 700, url: null },
+      literata: { family: systemSerif, weight: 700, url: null },
+      merriweather: { family: systemSerif, weight: 700, url: null },
+      libre: { family: systemSerif, weight: 700, url: null },
+      atkinson: { family: systemSans, weight: 700, url: null },
+      jakarta: { family: systemSans, weight: 700, url: null },
+      outfit: { family: systemSans, weight: 700, url: null },
+      bebas: { family: systemSans, weight: 700, url: null },
+      oswald: { family: systemSans, weight: 700, url: null },
+      manrope: { family: systemSans, weight: 700, url: null },
+      sora: { family: systemSans, weight: 700, url: null },
+      mono: { family: systemMono, weight: 600, url: null }
+    };
+
+    const lightPresets = [
+      { name: 'Claude', font: 'sans', theme: 'claude', color: 'default', desc: 'Clean warm like Claude.ai' },
+      { name: 'Zen', font: 'outfit', theme: 'zen', color: 'default', desc: 'Pure minimal white' },
+      { name: 'Stark', font: 'sora', theme: 'stark', color: 'high', desc: 'Bold high contrast' },
+      { name: 'Book', font: 'literata', theme: 'paper', color: 'warm', desc: 'Long-form book reading' },
+      { name: 'Classic', font: 'merriweather', theme: 'cream', color: 'default', desc: 'Traditional print feel' },
+      { name: 'Kindle', font: 'merriweather', theme: 'kindle', color: 'warm', desc: 'E-ink sepia warmth' },
+      { name: 'GitHub', font: 'sans', theme: 'github', color: 'default', desc: 'Developer favourite' },
+      { name: 'Amber', font: 'atkinson', theme: 'amber', color: 'high', desc: 'High contrast warm' },
+      { name: 'Newspaper', font: 'merriweather', theme: 'newspaper', color: 'default', desc: 'Old school print' },
+      { name: 'Lavender', font: 'clean', theme: 'lavender', color: 'default', desc: 'Soft purple calm' }
+    ];
+
+    const darkPresets = [
+      { name: 'Night', font: 'sans', theme: 'dark', color: 'soft', desc: 'Deep black OLED' },
+      { name: 'Void', font: 'sora', theme: 'void', color: 'soft', desc: 'Pure black void' },
+      { name: 'Carbon', font: 'minimal', theme: 'carbon', color: 'soft', desc: 'Material dark grey' },
+      { name: 'Midnight', font: 'libre', theme: 'midnight', color: 'soft', desc: 'Purple dark elegance' },
+      { name: 'Obsidian', font: 'sans', theme: 'obsidian', color: 'soft', desc: 'Note app dark' },
+      { name: 'Dracula', font: 'minimal', theme: 'dracula', color: 'soft', desc: 'Famous code dark' },
+      { name: 'Nord', font: 'jakarta', theme: 'nord', color: 'soft', desc: 'Arctic blue dark' },
+      { name: 'Catppuccin', font: 'clean', theme: 'catppuccin', color: 'soft', desc: 'Pastel dark cozy' },
+      { name: 'Forest', font: 'jakarta', theme: 'forest', color: 'soft', desc: 'Green night easy' },
+      { name: 'Ink', font: 'literata', theme: 'ink', color: 'soft', desc: 'Navy scholarly' }
+    ];
+
+    const textColorMap = {
+      light: { default: null, soft: '#6e6a62', warm: '#78350f', cool: '#1e3a5f', high: '#000000' },
+      dark: { default: null, soft: '#b0a898', warm: '#fde68a', cool: '#bfdbfe', high: '#ffffff' }
+    };
+
+    function clampIndex(index, length) {
+      const parsed = Number.parseInt(index, 10);
+      if (!Number.isFinite(parsed)) return 0;
+      return Math.min(Math.max(parsed, 0), Math.max(length - 1, 0));
+    }
+
+    function getPresets() {
+      return state.currentMode === 'dark' ? darkPresets : lightPresets;
+    }
+
+    function ensureFontLoaded(fontKey) {
+      if (loadedFonts.has(fontKey)) return;
+      const cfg = fontMap[fontKey];
+      if (!cfg) return;
+      loadedFonts.add(fontKey);
+    }
+
+    function buildPresetCarousel(selectedIndex = state.currentPresetIndex) {
+      const list = getPresets();
+      const safeIndex = clampIndex(selectedIndex, list.length);
+      state.currentPresetIndex = safeIndex;
+
+      if (els.presetTrack) {
+        els.presetTrack.innerHTML = list.map((preset, index) =>
+          `<div class="preset-card" data-index="${index}" aria-hidden="${index === safeIndex ? 'false' : 'true'}">
+            <div class="preset-name">${escapeHtml(preset.name)}</div>
+            <div class="preset-desc">${escapeHtml(preset.desc)}</div>
+          </div>`
+        ).join('');
+      }
+
+      if (els.presetDots) {
+        els.presetDots.innerHTML = list.map((_, index) =>
+          `<div class="preset-dot ${index === safeIndex ? 'active' : ''}"></div>`
+        ).join('');
+      }
+
+      setTrackPosition(safeIndex, false);
+      updatePresetA11y();
+    }
+
+    function setTrackPosition(index, animate) {
+      if (!els.presetTrack) return;
+      els.presetTrack.classList.toggle('snapping', Boolean(animate));
+      els.presetTrack.classList.toggle('dragging', false);
+      els.presetTrack.style.transform = `translate3d(-${index * 100}%, 0, 0)`;
+    }
+
+    function updateDots() {
+      if (!els.presetDots) return;
+      els.presetDots.querySelectorAll('.preset-dot').forEach((dot, index) => {
+        dot.classList.toggle('active', index === state.currentPresetIndex);
+      });
+    }
+
+    function updatePresetA11y() {
+      if (!els.presetWindow || !els.presetTrack) return;
+      const list = getPresets();
+      const preset = list[state.currentPresetIndex];
+      if (!preset) return;
+
+      els.presetWindow.setAttribute(
+        'aria-label',
+        `Reading preset carousel. Current preset: ${preset.name}. Use left and right arrow keys to change presets.`
+      );
+      els.presetTrack.querySelectorAll('.preset-card').forEach((card, index) => {
+        card.setAttribute('aria-hidden', index === state.currentPresetIndex ? 'false' : 'true');
+      });
+      updateThemeSettingsSummary();
+    }
+
+    function updateThemeSettingsSummary() {
+      if (!els.themeSettingsSummary) return;
+      const preset = getPresets()[state.currentPresetIndex];
+      const modeLabel = state.currentMode === 'dark' ? 'Dark' : 'Light';
+      els.themeSettingsSummary.textContent = `${preset ? preset.name : 'Preset'}, ${modeLabel}`;
+    }
+
+    function applyPreset(index, options = {}) {
+      const list = getPresets();
+      const safeIndex = clampIndex(index, list.length);
+      const preset = list[safeIndex];
+      if (!preset) return;
+
+      state.currentPresetIndex = safeIndex;
+      setFont(preset.font);
+      setTheme(preset.theme);
+      setTextColor(preset.color);
+      setTrackPosition(safeIndex, options.animate !== false);
+      updateDots();
+      updatePresetA11y();
+
+      if (options.resetTimer !== false) resetToolbarTimer();
+    }
+
+    function nextPreset() {
+      const list = getPresets();
+      state.currentPresetIndex = (state.currentPresetIndex + 1) % list.length;
+      applyPreset(state.currentPresetIndex);
+      showGestureHint(list[state.currentPresetIndex].name);
+    }
+
+    function prevPreset() {
+      const list = getPresets();
+      state.currentPresetIndex = (state.currentPresetIndex - 1 + list.length) % list.length;
+      applyPreset(state.currentPresetIndex);
+      showGestureHint(list[state.currentPresetIndex].name);
+    }
+
+    function setMode(mode, options = {}) {
+      state.currentMode = mode === 'dark' ? 'dark' : 'light';
+
+      if (els.modeLight) els.modeLight.classList.toggle('active', state.currentMode === 'light');
+      if (els.modeDark) els.modeDark.classList.toggle('active', state.currentMode === 'dark');
+      if (els.modeLight) els.modeLight.setAttribute('aria-pressed', state.currentMode === 'light' ? 'true' : 'false');
+      if (els.modeDark) els.modeDark.setAttribute('aria-pressed', state.currentMode === 'dark' ? 'true' : 'false');
+
+      const selectedIndex = options.presetIndex === undefined ? 0 : options.presetIndex;
+      buildPresetCarousel(selectedIndex);
+      applyPreset(state.currentPresetIndex, {
+        animate: false,
+        resetTimer: options.resetTimer
+      });
+    }
+
+    function setFont(font) {
+      if (!VALID_FONTS.has(font)) font = 'sans';
+      const cfg = fontMap[font];
+      if (!cfg) return;
+
+      ensureFontLoaded(font);
+      document.documentElement.style.setProperty('--body-font', cfg.family);
+      document.documentElement.style.setProperty('--heading-weight', cfg.weight);
+    }
+
+    function setTheme(theme) {
+      if (!VALID_THEMES.has(theme)) theme = 'claude';
+      Array.from(document.body.classList)
+        .filter(className => className.startsWith('theme-'))
+        .forEach(className => document.body.classList.remove(className));
+      document.body.classList.add(`theme-${theme}`);
+    }
+
+    function setTextColor(color) {
+      state.currentTextColor = color || 'default';
+      applyTextColor(state.currentTextColor);
+    }
+
+    function applyTextColor(color) {
+      if (!els.readerContent) return;
+      const modeColors = textColorMap[state.currentMode] || textColorMap.light;
+      const val = modeColors[color] || '';
+      if (val) {
+        els.readerContent.style.setProperty('--reader-text-color', val);
+      } else {
+        els.readerContent.style.removeProperty('--reader-text-color');
+      }
+    }
+
+    function setSize(size) {
+      if (!els.readerContent) return;
+      const nextSize = VALID_SIZES.has(size) ? size : 'medium';
+      els.readerContent.classList.remove('fs-small', 'fs-medium', 'fs-large', 'fs-xl');
+      els.readerContent.classList.add(`fs-${nextSize}`);
+
+      document.querySelectorAll('[data-size]').forEach(button => {
+        const active = button.getAttribute('data-size') === nextSize;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+
+    }
+
+    // ===== Core Sanitization & Markdown Parser =====
+
+    /**
+     * Security Escaper: Converts raw user input into safe HTML-encoded text.
+     * Guaranteed to prevent initial rendering of user-supplied scripts or tags.
+     */
+    function escapeHtml(text) {
+      if (typeof text !== 'string') return '';
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return text.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    /**
+     * Safe Inline Tokenizer: Compiles safe basic markdown inline syntax from escaped text.
+     * Prevents script injection by validating schemes and encoding link targets.
+     */
+    function parseEmphasis(escapedText) {
+      return escapedText
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+        .replace(/\b_([^_]+)_\b/g, '<em>$1</em>');
+    }
+
+    function decodeHtmlAttributeValue(value) {
+      const decoder = document.createElement('textarea');
+      decoder.innerHTML = value;
+      return decoder.value;
+    }
+
+    function normalizeSafeLinkHref(escapedUrl) {
+      const cleanUrl = decodeHtmlAttributeValue(escapedUrl).trim();
+      if (!cleanUrl || /[\u0000-\u001F\u007F]/.test(cleanUrl)) return null;
+
+      const unsafeSchemeRegex = /^(javascript|data|vbscript|file|blob):/i;
+      const safeSchemeRegex = /^(https?|ftp|mailto):/i;
+      const isRootRelative = cleanUrl.startsWith('/') && !cleanUrl.startsWith('//');
+      const isSafe = (safeSchemeRegex.test(cleanUrl) || isRootRelative || cleanUrl.startsWith('#')) && !unsafeSchemeRegex.test(cleanUrl);
+      if (!isSafe) return null;
+
+      try {
+        return escapeHtml(encodeURI(cleanUrl));
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function restoreInlineTokens(text, tokens, prefix) {
+      return text.replace(new RegExp(`\\uE000${prefix}(\\d+)\\uE001`, 'g'), (match, index) => {
+        return tokens[Number(index)] || match;
+      });
+    }
+
+    function parseInline(escapedText) {
+      if (!escapedText) return '';
+
+      const codeTokens = [];
+      const codeProtected = escapedText.replace(/`([^`]+)`/g, (match, codeText) => {
+        const token = `\uE000CODE${codeTokens.length}\uE001`;
+        codeTokens.push(`<code>${codeText}</code>`);
+        return token;
+      });
+
+      const linkTokens = [];
+      const linksProtected = codeProtected.replace(/\[([^\]]+)\]\(((?:[^()\\]|\\.|\([^()]*\))+)\)/g, (match, text, url) => {
+        const parsedText = parseEmphasis(text);
+        const href = normalizeSafeLinkHref(url);
+        if (!href) return parsedText;
+
+        const token = `\uE000LINK${linkTokens.length}\uE001`;
+        linkTokens.push(`<a href="${href}" target="_blank" rel="noopener noreferrer">${parsedText}</a>`);
+        return token;
+      });
+
+      const emphasized = parseEmphasis(linksProtected);
+      return restoreInlineTokens(restoreInlineTokens(emphasized, linkTokens, 'LINK'), codeTokens, 'CODE');
+    }
+
+    // High performance asynchronous chunked parser. Prevents layout thrashing on huge documents.
+    function renderTextAsync(text, onComplete, options = {}) {
+      if (!els.readerContent) return;
+      const renderId = ++activeRenderId;
+      const shouldShowLoader = !options.suppressLoader;
+      if (shouldShowLoader) showLoader('Preparing reader...');
+      els.readerContent.textContent = '';
+
+      setTimeout(() => {
+        if (renderId !== activeRenderId) return;
+        const lines = text.split('\n');
+        const htmlParts = [];
+        let index = 0;
+        let inList = false;
+        let listType = null;
+        let listBuffer = '';
+        let wasPreviousLineEmpty = true;
+        let inCodeBlock = false;
+        let codeBuffer = '';
+
+        function pushHtml(html) {
+          htmlParts.push(html);
+        }
+
+        function flushParts() {
+          if (renderId !== activeRenderId || !htmlParts.length || !els.readerContent) return;
+          els.readerContent.insertAdjacentHTML('beforeend', htmlParts.join(''));
+          htmlParts.length = 0;
+        }
+
+        function flushList() {
+          if (!inList) return;
+          pushHtml(listType === 'ul' ? `<ul>${listBuffer}</ul>` : `<ol>${listBuffer}</ol>`);
+          inList = false;
+          listType = null;
+          listBuffer = '';
+        }
+
+        // Standard parser block layout processor
+        function processLine(rawLine) {
+          const line = rawLine.trimEnd();
+          const trimmed = line.trim();
+
+          if (trimmed.startsWith('```')) {
+            if (inCodeBlock) {
+              flushList();
+              // Code content is completely HTML-escaped safely
+              pushHtml(`<pre><code>${escapeHtml(codeBuffer.trimEnd())}</code></pre>`);
+              inCodeBlock = false;
+              codeBuffer = '';
+            } else {
+              flushList();
+              inCodeBlock = true;
+            }
+            wasPreviousLineEmpty = false;
+            return;
+          }
+
+          if (inCodeBlock) {
+            codeBuffer += rawLine + '\n';
+            return;
+          }
+
+          if (trimmed === '') {
+            flushList();
+            wasPreviousLineEmpty = true;
+            return;
+          }
+
+          if (trimmed === '---' || trimmed === '***') {
+            flushList();
+            pushHtml('<hr>');
+            wasPreviousLineEmpty = false;
+            return;
+          }
+
+          // Structured Markdown Heading levels h1/h2/h3
+          const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+          if (headingMatch) {
+            flushList();
+            const level = Math.min(headingMatch[1].length, 3); // Support h1, h2, or h3 levels
+            const headingText = headingMatch[2];
+            pushHtml(`<h${level} id="heading-${index}">${parseInline(escapeHtml(headingText))}</h${level}>`);
+            wasPreviousLineEmpty = false;
+            return;
+          }
+
+          if (state.smartHeadings && wasPreviousLineEmpty && /^[A-Z][A-Z0-9\s]{2,40}[A-Z0-9]$/.test(trimmed) && trimmed.length < 50) {
+            flushList();
+            pushHtml(`<h2 id="heading-${index}">${escapeHtml(trimmed)}</h2>`);
+            wasPreviousLineEmpty = false;
+            return;
+          }
+
+          if (/^[-\u2022\*]\s+/.test(trimmed)) {
+            if (!inList || listType !== 'ul') flushList();
+            inList = true;
+            listType = 'ul';
+            listBuffer += `<li>${parseInline(escapeHtml(trimmed.replace(/^[-\u2022\*]\s+/, '')))}</li>`;
+            wasPreviousLineEmpty = false;
+            return;
+          }
+
+          if (/^\d+[.)]\s+/.test(trimmed)) {
+            if (!inList || listType !== 'ol') flushList();
+            inList = true;
+            listType = 'ol';
+            listBuffer += `<li>${parseInline(escapeHtml(trimmed.replace(/^\d+[.)]\s+/, '')))}</li>`;
+            wasPreviousLineEmpty = false;
+            return;
+          }
+
+          if (trimmed.startsWith('> ')) {
+            flushList();
+            pushHtml(`<blockquote>${parseInline(escapeHtml(trimmed.substring(2)))}</blockquote>`);
+            wasPreviousLineEmpty = false;
+            return;
+          }
+
+          flushList();
+          pushHtml(`<p>${parseInline(escapeHtml(line))}</p>`);
+          wasPreviousLineEmpty = false;
+        }
+
+        // Dynamic yielding block iterator using requestAnimationFrame
+        function processChunk() {
+          if (renderId !== activeRenderId) return;
+          try {
+            const chunkEnd = Math.min(index + 500, lines.length);
+            for (; index < chunkEnd; index++) {
+              if (renderId !== activeRenderId) return;
+              processLine(lines[index]);
+            }
+
+            flushParts();
+            if (renderId !== activeRenderId) return;
+
+            if (index < lines.length) {
+              window.requestAnimationFrame(processChunk);
+              return;
+            }
+
+            flushList();
+            if (inCodeBlock) {
+              pushHtml(`<pre><code>${escapeHtml(codeBuffer.trimEnd())}</code></pre>`);
+            }
+            flushParts();
+            if (renderId !== activeRenderId) return;
+            applyTextColor(state.currentTextColor);
+            tokenizeReaderDOM(els.readerContent);
+            if (shouldShowLoader) hideLoader();
+            if (onComplete) onComplete();
+          } catch (err) {
+            if (renderId !== activeRenderId) return;
+            if (shouldShowLoader) hideLoader();
+            showStatus(`Could not render this text safely: ${formatError(err)}`, 'error');
+          }
+        }
+
+        processChunk();
+      }, 50);
+    }
+
+    function getReaderTextForCounting() {
+      if (!els.readerContent) return '';
+      if (state.isEditing) {
+        return els.readerContent.textContent || '';
+      }
+
+      const blocks = els.readerContent.querySelectorAll('h1, h2, h3, p, li, blockquote, pre');
+      if (!blocks.length) {
+        return els.readerContent.innerText || els.readerContent.textContent || '';
+      }
+
+      return Array.from(blocks)
+        .map(block => (block.textContent || '').trim())
+        .filter(Boolean)
+        .join(' ');
+    }
+
+    function updateWordCount() {
+      if (!els.readerContent || !els.wordCount) return;
+      const text = getReaderTextForCounting();
+      const words = text.trim().split(/\s+/).filter(word => word.length > 0).length;
+      const minutes = Math.ceil(words / 238);
+      const timeString = words < 238 ? '< 1 min read' : `~${minutes} min read`;
+      els.wordCount.textContent = `${words.toLocaleString()} words \u00b7 ${timeString}`;
+    }
+
+    function scheduleWordCountUpdate() {
+      window.clearTimeout(state.wordCountTimer);
+      state.wordCountTimer = window.setTimeout(updateWordCount, 0);
+    }
+
+    // ===== Features (Ruler, AutoScroll, Fullscreen, Download, TOC) =====
+    let isRulerActive = false;
+
+    function setRulerActive(active, options = {}) {
+      isRulerActive = Boolean(active);
+      if (els.readingRuler) {
+        els.readingRuler.style.display = isRulerActive ? 'block' : 'none';
+      }
+      if (!els.rulerBtn) return;
+
+      els.rulerBtn.classList.toggle('active', isRulerActive);
+      els.rulerBtn.setAttribute('aria-pressed', isRulerActive ? 'true' : 'false');
+
+      if (isRulerActive) {
+        els.rulerBtn.setAttribute('aria-label', 'Disable Reading Ruler');
+        els.rulerBtn.setAttribute('title', 'Disable Reading Ruler');
+        if (options.announce !== false) showStatus('Reading ruler guide activated.', 'success');
+      } else {
+        els.rulerBtn.setAttribute('aria-label', 'Enable Reading Ruler');
+        els.rulerBtn.setAttribute('title', 'Enable Reading Ruler');
+        if (options.announce !== false) showStatus('Reading ruler guide deactivated.', 'info');
+      }
+    }
+
+    function toggleRuler() {
+      if (!els.rulerBtn || !els.readingRuler) return;
+      setRulerActive(!isRulerActive);
+    }
+
+    function updateRulerPosition(e) {
+      if (!isRulerActive || !els.readingRuler || !els.readerContent) return;
+      const target = getElementTarget(e.target);
+      const scrollTop = getScrollTop();
+      
+      if (target && els.readerContent.contains(target) && 
+          (target.tagName === 'P' || target.tagName === 'LI' || 
+           target.tagName === 'H1' || target.tagName === 'H2' || target.tagName === 'H3' || target.tagName === 'BLOCKQUOTE' || 
+           target.closest('p, li, h1, h2, h3, blockquote'))) {
+        const textContainer = target.closest('p, li, h1, h2, h3, blockquote') || target;
+        const rect = textContainer.getBoundingClientRect();
+        const top = rect.top + scrollTop;
+        els.readingRuler.style.height = `${rect.height + 4}px`;
+        els.readingRuler.style.transform = `translate3d(0, ${top - 2}px, 0)`;
+      } else if (e.pageY) {
+        const y = e.pageY - 14;
+        els.readingRuler.style.height = `28px`;
+        els.readingRuler.style.transform = `translate3d(0, ${y}px, 0)`;
+      }
+    }
+
+    function autoScrollLoop(timestamp) {
+      if (!isAutoScrolling) return;
+      if (!lastScrollTime) lastScrollTime = timestamp;
+      const deltaTime = timestamp - lastScrollTime;
+      lastScrollTime = timestamp;
+
+      scrollAccumulator += deltaTime * autoScrollSpeed;
+      if (scrollAccumulator >= 1) {
+         const pixelsToScroll = Math.floor(scrollAccumulator);
+         window.scrollBy(0, pixelsToScroll);
+         scrollAccumulator -= pixelsToScroll;
+      }
+
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+      const distanceToBottom = document.documentElement.scrollHeight - getScrollTop() - viewportHeight;
+      if (distanceToBottom < 1) {
+        toggleAutoScroll();
+      } else {
+        requestAnimationFrame(autoScrollLoop);
+      }
+    }
+
+    function toggleAutoScroll() {
+      if (!els.autoScrollBtn) return;
+      isAutoScrolling = !isAutoScrolling;
+      if (isAutoScrolling) {
+        els.autoScrollBtn.classList.add('active');
+        els.autoScrollBtn.innerHTML = '<span aria-hidden="true">&#x23F8;</span>'; // Pause icon
+        els.autoScrollBtn.setAttribute('aria-pressed', 'true');
+        els.autoScrollBtn.setAttribute('aria-label', 'Stop Auto Scroll');
+        els.autoScrollBtn.setAttribute('title', 'Stop Auto Scroll');
+        lastScrollTime = 0;
+        scrollAccumulator = 0;
+        requestAnimationFrame(autoScrollLoop);
+        announceLive('Auto-scroll started.');
+      } else {
+        els.autoScrollBtn.classList.remove('active');
+        els.autoScrollBtn.innerHTML = '<span aria-hidden="true">&#x25B6;</span>'; // Play icon
+        els.autoScrollBtn.setAttribute('aria-pressed', 'false');
+        els.autoScrollBtn.setAttribute('aria-label', 'Start Auto Scroll');
+        els.autoScrollBtn.setAttribute('title', 'Start Auto Scroll');
+        announceLive('Auto-scroll stopped.');
+      }
+    }
+
+    // ===== Native TTS Engine & Multi-Format Integration =====
+
+    function clearHighlight() {
+      if (currentWordIndex >= 0 && wordSpans[currentWordIndex]) {
+        wordSpans[currentWordIndex].classList.remove('active');
+      }
+      if (els.readerContent) {
+        const activeSpans = els.readerContent.querySelectorAll('.tts-word.active');
+        activeSpans.forEach(s => s.classList.remove('active'));
+      }
+      currentWordIndex = -1;
+    }
+
+    function highlightAtIndex(absIndex) {
+      if (!wordMeta.length) return;
+      let idx = wordMeta.findIndex(w => absIndex >= w.start && absIndex < w.end);
+      if (idx === -1) {
+        for (let i = wordMeta.length - 1; i >= 0; i--) {
+          if (wordMeta[i].start <= absIndex) {
+            idx = i;
+            break;
+          }
+        }
+      }
+      if (idx === -1 || idx === currentWordIndex) return;
+      if (currentWordIndex >= 0 && wordSpans[currentWordIndex]) {
+        wordSpans[currentWordIndex].classList.remove('active');
+      }
+      currentWordIndex = idx;
+      const span = wordSpans[idx];
+      if (span) {
+        span.classList.add('active');
+        const rate = parseFloat(els.voiceRateInput ? els.voiceRateInput.value : '1.0') || 1.0;
+        const scrollBehavior = rate > 1.5 ? 'auto' : 'smooth';
+        try {
+          span.scrollIntoView({ block: 'nearest', behavior: scrollBehavior });
+        } catch (e) {
+          span.scrollIntoView();
+        }
+      }
+    }
+
+    function tokenizeReaderDOM(containerElement) {
+      clearHighlight();
+      wordSpans = [];
+      wordMeta = [];
+      fullSpokenText = '';
+
+      if (!containerElement) return { spans: wordSpans, meta: wordMeta, text: fullSpokenText };
+
+      // TreeWalker to safely find text nodes in reader content without altering non-text structure
+      const walker = document.createTreeWalker(containerElement, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_SKIP;
+          const parent = node.parentElement;
+          if (!parent) return NodeFilter.FILTER_SKIP;
+          const tag = parent.tagName.toLowerCase();
+          if (tag === 'script' || tag === 'style') return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      });
+
+      const textNodes = [];
+      while (walker.nextNode()) {
+        textNodes.push(walker.currentNode);
+      }
+
+      const re = /\S+/g;
+      let lastBlockElement = null;
+
+      textNodes.forEach(textNode => {
+        const text = textNode.nodeValue;
+        const parentBlock = textNode.parentElement ? textNode.parentElement.closest('p, h1, h2, h3, li, blockquote, pre') : null;
+
+        if (parentBlock && lastBlockElement && parentBlock !== lastBlockElement) {
+          if (!fullSpokenText.endsWith('\n\n')) {
+            if (!fullSpokenText.endsWith('\n')) fullSpokenText += '\n';
+            fullSpokenText += '\n';
+          }
+        } else if (fullSpokenText.length > 0 && !/\s$/.test(fullSpokenText)) {
+          fullSpokenText += ' ';
+        }
+        lastBlockElement = parentBlock;
+
+        const frag = document.createDocumentFragment();
+        let lastIndex = 0;
+        let m;
+
+        while ((m = re.exec(text)) !== null) {
+          if (m.index > lastIndex) {
+            const ws = text.slice(lastIndex, m.index);
+            frag.appendChild(document.createTextNode(ws));
+            fullSpokenText += ws;
+          }
+          const wordText = m[0];
+          const span = document.createElement('span');
+          span.className = 'tts-word';
+          const wordIdx = wordMeta.length;
+          span.setAttribute('data-word-idx', String(wordIdx));
+          span.textContent = wordText;
+          frag.appendChild(span);
+
+          const wordStart = fullSpokenText.length;
+          fullSpokenText += wordText;
+          const wordEnd = fullSpokenText.length;
+
+          wordSpans.push(span);
+          wordMeta.push({
+            index: wordIdx,
+            text: wordText,
+            start: wordStart,
+            end: wordEnd,
+            element: span
+          });
+
+          lastIndex = m.index + wordText.length;
+        }
+
+        if (lastIndex < text.length) {
+          const trailing = text.slice(lastIndex);
+          frag.appendChild(document.createTextNode(trailing));
+          fullSpokenText += trailing;
+        }
+
+        if (textNode.parentNode) {
+          textNode.parentNode.replaceChild(frag, textNode);
+        }
+      });
+
+      return { spans: wordSpans, meta: wordMeta, text: fullSpokenText };
+    }
+
+    function chunkText(text, baseOffset = 0, targetLen = CHUNK_TARGET) {
+      const out = [];
+      const len = text.length;
+      let start = 0;
+      while (start < len) {
+        if (len - start <= targetLen) {
+          out.push({ text: text.slice(start), start: baseOffset + start, end: baseOffset + len });
+          break;
+        }
+        const end = start + targetLen;
+        let splitAt = -1;
+        for (let i = Math.min(end, len - 1); i > start; i--) {
+          if (/\s/.test(text[i])) {
+            splitAt = i;
+            break;
+          }
+        }
+        if (splitAt === -1) splitAt = end;
+        out.push({ text: text.slice(start, splitAt), start: baseOffset + start, end: baseOffset + splitAt });
+        start = splitAt;
+        while (start < len && /\s/.test(text[start])) start++;
+      }
+      return out;
+    }
+
+    function populateVoices() {
+      if (!speechSupported || !els.voiceSelect) return;
+      const list = synth.getVoices();
+      if (!list || !list.length) return;
+
+      const seen = new Set();
+      const unique = [];
+      list.forEach(v => {
+        const key = v.name + '\0' + v.lang;
+        if (!seen.has(key)) {
+          seen.add(key);
+          unique.push(v);
+        }
+      });
+
+      voices = unique.sort((a, b) => {
+        if (a.default !== b.default) return a.default ? -1 : 1;
+        const la = a.lang || '';
+        const lb = b.lang || '';
+        if (la !== lb) return la.localeCompare(lb);
+        return a.name.localeCompare(b.name);
+      });
+
+      const prevSelection = els.voiceSelect.value || '';
+      els.voiceSelect.innerHTML = '';
+
+      voices.forEach((v, i) => {
+        const opt = document.createElement('option');
+        opt.value = v.voiceURI || String(i);
+        opt.textContent = `${v.name} (${v.lang})${v.default ? ' — default' : ''}`;
+        opt.dataset.voiceIndex = String(i);
+        els.voiceSelect.appendChild(opt);
+      });
+
+      let chosenIndex = -1;
+      if (prevSelection) {
+        chosenIndex = voices.findIndex(v => v.voiceURI === prevSelection || String(voices.indexOf(v)) === prevSelection);
+      }
+      if (chosenIndex === -1) {
+        const userLang = (typeof navigator !== 'undefined' && navigator.language) || 'en-US';
+        chosenIndex = voices.findIndex(v => v.lang === userLang);
+        if (chosenIndex === -1) {
+          chosenIndex = voices.findIndex(v => v.lang && v.lang.split('-')[0] === userLang.split('-')[0]);
+        }
+        if (chosenIndex === -1) chosenIndex = voices.findIndex(v => v.default);
+        if (chosenIndex === -1) chosenIndex = 0;
+      }
+
+      if (chosenIndex >= 0 && chosenIndex < voices.length) {
+        els.voiceSelect.value = voices[chosenIndex].voiceURI || String(chosenIndex);
+      }
+    }
+
+    function pollVoices() {
+      if (!speechSupported) return;
+      let elapsed = 0;
+      const id = setInterval(() => {
+        elapsed += VOICE_POLL_MS;
+        populateVoices();
+        if ((voices && voices.length) || elapsed >= VOICE_POLL_TIMEOUT) {
+          clearInterval(id);
+        }
+      }, VOICE_POLL_MS);
+    }
+
+    function getSelectedVoice() {
+      if (!voices.length || !els.voiceSelect) return null;
+      const val = els.voiceSelect.value;
+      return voices.find(v => v.voiceURI === val) || voices[parseInt(val, 10)] || voices[0] || null;
+    }
+
+    function startEstimateTimer(chunk, generation) {
+      stopEstimateTimer();
+      if (!wordMeta.length) return;
+      const rate = clampNumber(els.voiceRateInput ? els.voiceRateInput.value : '1.0', 1.0, 0.5, 2.5);
+      const startIdx = chunkIndex;
+      const firstWord = wordMeta.findIndex(word => word.end > chunk.start);
+      const firstWordIndex = firstWord === -1 ? wordMeta.length - 1 : firstWord;
+      const lastWord = wordMeta.reduce((last, word, index) => word.start < chunk.end ? index : last, firstWordIndex);
+      let elapsed = 0;
+
+      if (firstWordIndex >= 0 && firstWordIndex < wordMeta.length) {
+        highlightAtIndex(wordMeta[firstWordIndex].start);
+      }
+
+      estimateTimer = setInterval(() => {
+        if (generation !== speechGeneration || ttsFinishing || ttsState !== STATE_PLAYING || chunkIndex !== startIdx) {
+          stopEstimateTimer();
+          return;
+        }
+        elapsed += BOUNDARY_FALLBACK_MS;
+        const wordsPerMs = (WORDS_PER_MIN * rate) / 60000;
+        const estimatedOffset = Math.floor(elapsed * wordsPerMs);
+        const idx = Math.min(lastWord, firstWordIndex + estimatedOffset);
+        if (idx >= firstWordIndex && idx !== currentWordIndex && idx < wordMeta.length) {
+          highlightAtIndex(wordMeta[idx].start);
+        }
+      }, BOUNDARY_FALLBACK_MS);
+    }
+
+    function stopEstimateTimer() {
+      if (estimateTimer) {
+        clearInterval(estimateTimer);
+        estimateTimer = null;
+      }
+    }
+
+    function startKeepAliveTimer() {
+      stopKeepAliveTimer();
+      if (isMobile) return;
+      keepAliveTimer = setInterval(() => {
+        if (ttsFinishing || ttsState !== STATE_PLAYING) return;
+        try {
+          if (synth && synth.speaking) {
+            synth.pause();
+            synth.resume();
+          }
+        } catch (e) {}
+      }, KEEP_ALIVE_MS);
+    }
+
+    function stopKeepAliveTimer() {
+      if (keepAliveTimer) {
+        clearInterval(keepAliveTimer);
+        keepAliveTimer = null;
+      }
+    }
+
+    function setTTSState(next) {
+      ttsState = next;
+      const idle = ttsState === STATE_IDLE;
+      const playing = ttsState === STATE_PLAYING;
+      const paused = ttsState === STATE_PAUSED;
+      isSpeaking = playing || paused;
+
+      if (els.ttsBtn) {
+        els.ttsBtn.classList.toggle('active', playing || paused);
+        els.ttsBtn.setAttribute('aria-pressed', playing ? 'true' : 'false');
+        if (playing) {
+          els.ttsBtn.innerHTML = '<span aria-hidden="true">&#x23F8;</span> Pause';
+          els.ttsBtn.setAttribute('aria-label', 'Pause Read Aloud');
+          els.ttsBtn.setAttribute('title', 'Pause Read Aloud');
+        } else if (paused) {
+          els.ttsBtn.innerHTML = '<span aria-hidden="true">&#x25B6;</span> Resume';
+          els.ttsBtn.setAttribute('aria-label', 'Resume Read Aloud');
+          els.ttsBtn.setAttribute('title', 'Resume Read Aloud');
+        } else {
+          els.ttsBtn.innerHTML = '<span aria-hidden="true">&#x1F50A;</span> Read Aloud';
+          els.ttsBtn.setAttribute('aria-label', 'Start Read Aloud');
+          els.ttsBtn.setAttribute('title', 'Start Read Aloud');
+        }
+      }
+
+      if (els.ttsStopBtn) {
+        els.ttsStopBtn.disabled = idle;
+      }
+
+      if (els.audioPlayerBar) {
+        els.audioPlayerBar.classList.toggle('active', !idle);
+      }
+
+      if (els.audioPlayPauseBtn) {
+        if (playing) {
+          els.audioPlayPauseBtn.innerHTML = '<span aria-hidden="true">&#x23F8;</span>';
+          els.audioPlayPauseBtn.setAttribute('aria-label', 'Pause narration');
+          els.audioPlayPauseBtn.setAttribute('title', 'Pause narration');
+        } else {
+          els.audioPlayPauseBtn.innerHTML = '<span aria-hidden="true">&#x25B6;</span>';
+          els.audioPlayPauseBtn.setAttribute('aria-label', paused ? 'Resume narration' : 'Play narration');
+          els.audioPlayPauseBtn.setAttribute('title', paused ? 'Resume narration' : 'Play narration');
+        }
+      }
+
+      if (els.audioStopBtn) {
+        els.audioStopBtn.disabled = idle;
+      }
+
+      if (els.audioStatusText) {
+        if (playing) {
+          els.audioStatusText.textContent = 'Speaking...';
+        } else if (paused) {
+          els.audioStatusText.textContent = 'Paused';
+        } else {
+          els.audioStatusText.textContent = 'Speech Ready';
+        }
+      }
+    }
+
+    function buildUtterance(chunk, generation) {
+      const utt = new SpeechSynthesisUtterance(chunk.text);
+      const selectedVoice = getSelectedVoice();
+      if (selectedVoice) utt.voice = selectedVoice;
+      const rate = clampNumber(els.voiceRateInput ? els.voiceRateInput.value : '1.0', 1.0, 0.5, 2.5);
+      utt.rate = rate;
+      utt.pitch = 1;
+      chunkHasBoundary = false;
+
+      utt.onboundary = (e) => {
+        if (generation !== speechGeneration || (e.name && e.name !== 'word')) return;
+        chunkHasBoundary = true;
+        stopEstimateTimer();
+        highlightAtIndex(chunk.start + e.charIndex);
+      };
+
+      utt.onstart = () => {
+        if (generation !== speechGeneration || ttsFinishing) return;
+        if (!chunkHasBoundary) {
+          startEstimateTimer(chunk, generation);
+        }
+      };
+
+      utt.onend = () => {
+        if (generation !== speechGeneration || ttsFinishing) return;
+        stopEstimateTimer();
+        if (ttsState === STATE_PLAYING && chunkIndex < chunks.length - 1) {
+          chunkIndex++;
+          speakChunk(chunks[chunkIndex], generation);
+        } else if (ttsState === STATE_PLAYING) {
+          finishSpeech();
+        }
+      };
+
+      utt.onerror = (e) => {
+        if (generation !== speechGeneration || ttsFinishing) return;
+        if (e.error === 'interrupted' || e.error === 'canceled') {
+          stopEstimateTimer();
+          if (ttsState === STATE_PLAYING && chunkIndex < chunks.length - 1) {
+            chunkIndex++;
+            speakChunk(chunks[chunkIndex], generation);
+          } else if (ttsState === STATE_PLAYING) {
+            finishSpeech();
+          }
+          return;
+        }
+        if (e.error === 'not-allowed' || ttsState !== STATE_IDLE) {
+          const message = e.error === 'not-allowed'
+            ? 'Speech permission was denied. Check your browser audio settings.'
+            : 'Speech playback stopped unexpectedly. Try another voice or browser.';
+          showStatus(message, 'error');
+          finishSpeech();
+        }
+      };
+
+      return utt;
+    }
+
+    function speakChunk(chunk, generation = speechGeneration) {
+      if (!speechSupported || !synth) return;
+      currentUtterance = buildUtterance(chunk, generation);
+      synth.speak(currentUtterance);
+    }
+
+    function startSpeech(fromWordIndex = 0) {
+      if (!speechSupported || !synth) {
+        showStatus('Text-to-speech is not supported in your browser.', 'error');
+        return;
+      }
+      if (!els.readerContent) return;
+
+      if (!wordMeta.length) {
+        tokenizeReaderDOM(els.readerContent);
+      }
+      if (!fullSpokenText || !wordMeta.length) {
+        showStatus('No text content available to read.', 'info');
+        return;
+      }
+
+      const targetIdx = Math.max(0, Math.min(fromWordIndex, wordMeta.length - 1));
+      restartFromWord(targetIdx);
+      announceLive('Text-to-speech started.');
+    }
+
+    function restartFromWord(idx) {
+      if (!speechSupported || !synth || !fullSpokenText || !wordMeta.length) return;
+      const meta = wordMeta[idx];
+      const startChar = meta ? meta.start : 0;
+      chunks = chunkText(fullSpokenText.slice(startChar), startChar);
+      chunkIndex = 0;
+      ttsFinishing = false;
+      visibilityInterrupted = false;
+      speechCanceledWhileHidden = false;
+      speechGeneration++;
+      try { synth.cancel(); } catch (e) {}
+      setTTSState(STATE_PLAYING);
+      startKeepAliveTimer();
+      if (chunks.length > 0) {
+        speakChunk(chunks[0], speechGeneration);
+        highlightAtIndex(startChar);
+      } else {
+        finishSpeech();
+      }
+    }
+
+    function pauseSpeech() {
+      if (ttsState !== STATE_PLAYING) return;
+      stopEstimateTimer();
+      stopKeepAliveTimer();
+      if (isMobile) {
+        speechGeneration++;
+        try { if (synth) synth.cancel(); } catch (e) {}
+      } else {
+        try { if (synth) synth.pause(); } catch (e) {}
+      }
+      setTTSState(STATE_PAUSED);
+      announceLive('Text-to-speech paused.');
+    }
+
+    function resumeSpeech() {
+      if (ttsState !== STATE_PAUSED) return;
+      if (isMobile || speechCanceledWhileHidden) {
+        restartFromWord(currentWordIndex >= 0 ? currentWordIndex : 0);
+      } else {
+        try { if (synth) synth.resume(); } catch (e) {}
+        setTTSState(STATE_PLAYING);
+        startKeepAliveTimer();
+      }
+      announceLive('Text-to-speech resumed.');
+    }
+
+    function finishSpeech() {
+      stopTTS();
+    }
+
+    function stopTTS() {
+      if (ttsFinishing) return;
+      ttsFinishing = true;
+      speechGeneration++;
+      visibilityInterrupted = false;
+      speechCanceledWhileHidden = false;
+      stopEstimateTimer();
+      stopKeepAliveTimer();
+      if (speechSupported && synth) {
+        try { synth.cancel(); } catch (e) {}
+      }
+      currentUtterance = null;
+      clearHighlight();
+      setTTSState(STATE_IDLE);
+      ttsFinishing = false;
+      announceLive('Text-to-speech stopped.');
+    }
+
+    function toggleTTS() {
+      if (!speechSupported || !synth) {
+        showStatus('Text-to-speech is not supported in your browser.', 'error');
+        return;
+      }
+      if (ttsState === STATE_PLAYING) {
+        pauseSpeech();
+      } else if (ttsState === STATE_PAUSED) {
+        resumeSpeech();
+      } else {
+        startSpeech(0);
+      }
+    }
+
+    const SPEED_STEPS = [0.8, 1.0, 1.2, 1.5, 1.8, 2.0];
+    function cycleVoiceSpeed() {
+      const current = parseFloat(els.voiceRateInput ? els.voiceRateInput.value : '1.0') || 1.0;
+      let nextIdx = SPEED_STEPS.findIndex(s => Math.abs(s - current) < 0.05) + 1;
+      if (nextIdx >= SPEED_STEPS.length || nextIdx === 0) nextIdx = 0;
+      const nextSpeed = SPEED_STEPS[nextIdx];
+      if (els.voiceRateInput) {
+        els.voiceRateInput.value = nextSpeed;
+        if (els.voiceRateVal) els.voiceRateVal.textContent = `${nextSpeed.toFixed(1)}x`;
+      }
+      if (els.audioSpeedBtn) {
+        els.audioSpeedBtn.textContent = `${nextSpeed.toFixed(1)}x`;
+      }
+      announceLive(`Speech speed changed to ${nextSpeed.toFixed(1)}x.`);
+      if (ttsState === STATE_PLAYING) {
+        restartFromWord(currentWordIndex >= 0 ? currentWordIndex : 0);
+      }
+    }
+
+    function toggleFullscreen() {
+      try {
+        if (!getFullscreenElement()) {
+          const requestFullscreen = document.documentElement.requestFullscreen ||
+            document.documentElement.webkitRequestFullscreen ||
+            document.documentElement.msRequestFullscreen;
+          if (!requestFullscreen) {
+            showStatus('Fullscreen mode is not supported on this device.', 'error');
+            return;
+          }
+          handleFullscreenPromise(requestFullscreen.call(document.documentElement));
+        } else {
+          const exitFullscreen = document.exitFullscreen ||
+            document.webkitExitFullscreen ||
+            document.msExitFullscreen;
+          if (!exitFullscreen) {
+            showStatus('Fullscreen exit is not supported on this device.', 'error');
+            return;
+          }
+          handleFullscreenPromise(exitFullscreen.call(document));
+        }
+      } catch (err) {
+         showStatus('Fullscreen mode not permitted on this device.', 'error');
+      }
+    }
+
+    function getFullscreenElement() {
+      return document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.msFullscreenElement ||
+        null;
+    }
+
+    function handleFullscreenPromise(result) {
+      if (result && typeof result.catch === 'function') {
+        result.catch(() => showStatus('Fullscreen mode not permitted on this device.', 'error'));
+      }
+    }
+
+    function updateFullscreenButton() {
+      if (els.fullscreenBtn) {
+        const isFullscreen = Boolean(getFullscreenElement());
+        els.fullscreenBtn.classList.toggle('active', isFullscreen);
+        els.fullscreenBtn.setAttribute('aria-pressed', isFullscreen ? 'true' : 'false');
+        els.fullscreenBtn.setAttribute('aria-label', isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen');
+        els.fullscreenBtn.setAttribute('title', isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen');
+      }
+    }
+
+    function downloadText() {
+       if (!state.currentText) {
+         showStatus('No text content to download.', 'error');
+         return;
+       }
+       let url = null;
+       let anchor = null;
+       try {
+         const blob = new Blob([state.currentText], { type: 'text/plain;charset=utf-8' });
+         url = URL.createObjectURL(blob);
+         anchor = document.createElement('a');
+         anchor.href = url;
+         anchor.download = 'Reader_Export.txt';
+         document.body.appendChild(anchor);
+         anchor.click();
+         showStatus("File downloaded successfully.", "success");
+       } catch (err) {
+         showStatus('Download failed on this device.', 'error');
+       } finally {
+         if (anchor && anchor.parentNode) {
+           anchor.parentNode.removeChild(anchor);
+         }
+         if (url) {
+           window.setTimeout(() => URL.revokeObjectURL(url), 0);
+         }
+       }
+    }
+
+    function setupFocusTrap(dialog) {
+      if (!dialog) return;
+      dialog.addEventListener('keydown', (e) => {
+        if (e.key !== 'Tab') return;
+        const focusableElements = dialog.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+        if (focusableElements.length === 0) return;
+
+        const firstFocusable = focusableElements[0];
+        const lastFocusable = focusableElements[focusableElements.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstFocusable) {
+            e.preventDefault();
+            lastFocusable.focus();
+          }
+        } else {
+          if (document.activeElement === lastFocusable) {
+            e.preventDefault();
+            firstFocusable.focus();
+          }
+        }
+      });
+    }
+
+    function getHeadingScrollOffset() {
+      if (!els.toolbar || isMobileSheetLayout() || state.focusMode || els.toolbar.classList.contains('hidden-bar')) {
+        return 0;
+      }
+
+      const rect = els.toolbar.getBoundingClientRect();
+      if (rect.height <= 0 || rect.bottom <= 0) return 0;
+      return Math.ceil(rect.bottom + 16);
+    }
+
+    function scrollHeadingIntoView(heading) {
+      if (!heading) return;
+      const offset = getHeadingScrollOffset();
+      if (!offset) {
+        heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+
+      const headingTop = heading.getBoundingClientRect().top + getScrollTop();
+      window.scrollTo({
+        top: Math.max(0, headingTop - offset),
+        behavior: 'smooth'
+      });
+    }
+
+    function openTocDialog() {
+      if (!els.tocDialog) return false;
+      if (els.tocDialog.open) return true;
+
+      if (typeof els.tocDialog.showModal === 'function') {
+        try {
+          els.tocDialog.showModal();
+          return true;
+        } catch (err) {
+          // Fall through to the non-modal fallback for double-click races or partial dialog support.
+        }
+      }
+
+      els.tocDialog.setAttribute('open', '');
+      return true;
+    }
+
+    function closeTocDialog() {
+      if (!els.tocDialog || !els.tocDialog.open) return;
+
+      if (typeof els.tocDialog.close === 'function') {
+        try {
+          els.tocDialog.close();
+          return;
+        } catch (err) {
+          // Fall back to attribute removal below.
+        }
+      }
+
+      els.tocDialog.removeAttribute('open');
+      els.tocDialog.dispatchEvent(new Event('close'));
+    }
+
+    function populateAndShowTOC() {
+       if (!els.readerContent || !els.tocDialog || !els.tocBody) return;
+       const headings = els.readerContent.querySelectorAll('h1, h2, h3');
+       if (headings.length === 0) {
+         showStatus("No headings found in this document.", "info");
+         return;
+       }
+       
+       lastActiveElement = document.activeElement;
+       els.tocBody.innerHTML = '';
+
+       headings.forEach((h) => {
+         if (!h.id) h.id = `heading-${Math.random().toString(36).slice(2, 11)}`;
+         const a = document.createElement('a');
+         a.className = 'toc-item';
+         a.textContent = h.textContent;
+         a.href = `#${h.id}`;
+         a.addEventListener('click', (e) => {
+           e.preventDefault();
+           scrollHeadingIntoView(h);
+           closeTocDialog();
+         });
+         els.tocBody.appendChild(a);
+       });
+
+       if (!openTocDialog()) {
+         showStatus('Table of contents is unavailable in this browser.', 'error');
+         return;
+       }
+
+       setTimeout(() => {
+         if (els.closeTocBtn) els.closeTocBtn.focus();
+       }, 50);
+    }
+
+    // ===== File Processing Pipeline =====
+    function getExtension(fileName) {
+      const dot = fileName.lastIndexOf('.');
+      return dot >= 0 ? fileName.slice(dot + 1).toLowerCase() : '';
+    }
+
+    function readFileAsText(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = event => resolve(event.target.result || '');
+        reader.onerror = () => reject(reader.error || new Error('The file could not be read.'));
+        reader.onabort = () => reject(new Error('The file read was cancelled.'));
+        reader.readAsText(file);
+      });
+    }
+
+    function readFileAsArrayBuffer(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = event => resolve(event.target.result);
+        reader.onerror = () => reject(reader.error || new Error('The file could not be read.'));
+        reader.onabort = () => reject(new Error('The file read was cancelled.'));
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    function extractPdfPageText(items) {
+      let text = '';
+      let lastY = null;
+      let lastX = null;
+      let lastWidth = null;
+
+      items.forEach(item => {
+        const currentY = item.transform && typeof item.transform[5] === 'number' ? item.transform[5] : null;
+        const currentX = item.transform && typeof item.transform[4] === 'number' ? item.transform[4] : null;
+        const currentWidth = typeof item.width === 'number' ? item.width : null;
+        const value = item.str || '';
+
+        if (lastY !== null && currentY !== null) {
+          const diffY = Math.abs(lastY - currentY);
+          const height = Math.abs(item.height || 10);
+          if (diffY > height * 1.2) {
+            text += '\n\n';
+          } else if (diffY > 2) {
+            text += ' ';
+          } else if (lastX !== null && currentX !== null) {
+            const expectedNextX = lastX + (lastWidth || 0);
+            if (currentX > expectedNextX + 1.5 && !text.endsWith(' ') && !value.startsWith(' ')) {
+              text += ' ';
+            }
+          }
+        }
+
+        text += value;
+        if (currentY !== null) lastY = currentY;
+        if (currentX !== null) lastX = currentX;
+        if (currentWidth !== null) lastWidth = currentWidth;
+      });
+
+      return text;
+    }
+
+    async function extractPdfText(arrayBuffer, readToken) {
+      assertActiveFileRead(readToken);
+      showReadLoader(readToken, 'Loading PDF worker module...');
+      const pdfLib = await loadLibrary('pdf');
+      assertActiveFileRead(readToken);
+      if (!pdfLib) {
+        throw new Error('PDF processing library could not be loaded. Try Markdown or TXT documents instead.');
+      }
+
+      const typedArray = new Uint8Array(arrayBuffer);
+      const loadingTask = pdfLib.getDocument({ data: typedArray });
+      let pdf = null;
+
+      try {
+        pdf = await loadingTask.promise;
+        assertActiveFileRead(readToken);
+
+        if (pdf.numPages > MAX_PDF_PAGES) {
+          throw new Error(`This PDF has ${pdf.numPages} pages. Limit is ${MAX_PDF_PAGES} pages for browser processing.`);
+        }
+        const pages = [];
+        let totalTextLength = 0;
+
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+          assertActiveFileRead(readToken);
+          showReadLoader(readToken, `Reading page ${pageNumber} of ${pdf.numPages}...`);
+          let page = null;
+
+          try {
+            page = await pdf.getPage(pageNumber);
+            assertActiveFileRead(readToken);
+            const content = await page.getTextContent();
+            assertActiveFileRead(readToken);
+            const pageText = extractPdfPageText(content.items);
+            totalTextLength += pageText.length;
+            if (totalTextLength > MAX_EXTRACTED_TEXT_CHARS) {
+              throw new Error(`This PDF contains too much extracted text for the browser reader. Limit is ${MAX_EXTRACTED_TEXT_CHARS.toLocaleString()} characters.`);
+            }
+            pages.push(pageText);
+          } finally {
+            if (page && typeof page.cleanup === 'function') {
+              try {
+                page.cleanup();
+              } catch (err) {
+                console.warn('PDF page cleanup failed.', err);
+              }
+            }
+          }
+        }
+
+        return pages.join('\n\n').trim();
+      } finally {
+        if (pdf && typeof pdf.cleanup === 'function') {
+          try {
+            pdf.cleanup();
+          } catch (err) {
+            console.warn('PDF cleanup failed.', err);
+          }
+        }
+
+        if (loadingTask && typeof loadingTask.destroy === 'function') {
+          try {
+            await loadingTask.destroy();
+          } catch (err) {
+            console.warn('PDF loading task cleanup failed.', err);
+          }
+        } else if (pdf && typeof pdf.destroy === 'function') {
+          try {
+            await pdf.destroy();
+          } catch (err) {
+            console.warn('PDF document cleanup failed.', err);
+          }
+        }
+      }
+    }
+
+    async function extractDocxText(arrayBuffer, readToken) {
+      assertActiveFileRead(readToken);
+      showReadLoader(readToken, 'Loading DOCX parser module...');
+      let mammothLib;
+      try {
+        mammothLib = await loadLibrary('mammoth');
+      } catch (err) {
+        throw new Error(`DOCX parser library failed to load: ${formatError(err)} Try reloading the app or exporting this file as TXT/Markdown.`);
+      }
+      if (!mammothLib) {
+        throw new Error('DOCX parser library is unavailable. Try reloading the app or exporting this file as TXT/Markdown.');
+      }
+
+      assertActiveFileRead(readToken);
+      const result = await mammothLib.extractRawText({ arrayBuffer });
+      assertActiveFileRead(readToken);
+      return enforceExtractedTextLimit((result.value || '').trim(), 'DOCX');
+    }
+
+    async function readSelectedFile(file, extension, readToken) {
+      assertActiveFileRead(readToken);
+
+      if (TEXT_EXTENSIONS.has(extension)) {
+        showReadLoader(readToken, 'Reading text file...');
+        const text = await readFileAsText(file);
+        assertActiveFileRead(readToken);
+        return enforceExtractedTextLimit(text, 'text file');
+      }
+
+      if (extension === 'pdf') {
+        showReadLoader(readToken, 'Parsing PDF document...');
+        const arrayBuffer = await readFileAsArrayBuffer(file);
+        assertActiveFileRead(readToken);
+        return extractPdfText(arrayBuffer, readToken);
+      }
+
+      if (extension === 'docx') {
+        showReadLoader(readToken, 'Parsing DOCX document...');
+        const arrayBuffer = await readFileAsArrayBuffer(file);
+        assertActiveFileRead(readToken);
+        return extractDocxText(arrayBuffer, readToken);
+      }
+
+      throw new Error('Unsupported file extension.');
+    }
+
+    async function handleFile(event) {
+      const target = event && event.target ? event.target : null;
+      const file = target && target.files && target.files[0];
+      if (!file) return;
+
+      const extension = getExtension(file.name);
+      const readToken = beginFileRead();
+      cancelPendingRender();
+      clearStatus();
+
+      // Production guard: prevent out-of-bounds file size crashes before parsing.
+      if (file.size > MAX_FILE_SIZE) {
+        hideLoader();
+        showStatus(`File "${file.name}" is too large (${(file.size / (1024*1024)).toFixed(1)}MB). Limit is 15MB.`, 'error');
+        if (target && 'value' in target) target.value = '';
+        return;
+      }
+
+      if (file.size === 0) {
+        hideLoader();
+        showStatus(`File "${file.name}" is empty.`, 'error');
+        if (target && 'value' in target) target.value = '';
+        return;
+      }
+
+      try {
+        if (!SUPPORTED_EXTENSIONS.has(extension)) {
+          throw new Error('Unsupported format. Please upload TXT, Markdown (.md or .markdown), PDF, or DOCX documents.');
+        }
+
+        const text = await readSelectedFile(file, extension, readToken);
+        assertActiveFileRead(readToken);
+        hideLoader();
+        loadTextFlow(text);
+      } catch (err) {
+        if (isStaleReadError(err) || !isActiveFileRead(readToken)) return;
+        hideLoader();
+        showStatus(`Failed to read "${file.name}": ${formatError(err)}`, 'error');
+      } finally {
+        if (target && 'value' in target) target.value = '';
+      }
+    }
+
+    // ===== Flow Controls =====
+    function toggleClearBtn() {
+      if (!els.clearBtn || !els.pasteArea) return;
+      const hasInputText = Boolean(els.pasteArea.value.trim());
+      els.clearBtn.style.display = hasInputText ? 'block' : 'none';
+    }
+
+    function clearText() {
+      cancelPendingFileRead();
+      cancelPendingRender({ clearContent: true });
+      hideLoader();
+      state.currentText = '';
+      if (els.pasteArea) els.pasteArea.value = '';
+      toggleClearBtn();
+      showStatus('Text cleared from this session.', 'success');
+    }
+
+    function loadTextFlow(text) {
+      if (!text || !text.trim()) {
+        showStatus('Provide text input or upload a file first.', 'error');
+        return;
+      }
+
+      let safeText;
+      try {
+        safeText = enforceExtractedTextLimit(text, 'document');
+      } catch (err) {
+        showStatus(formatError(err), 'error');
+        return;
+      }
+
+      clearStatus();
+      state.currentText = safeText;
+      renderTextAsync(state.currentText, enterReader);
+    }
+
+    function loadFromPaste() {
+      if (els.pasteArea) {
+        cancelPendingFileRead();
+        cancelPendingRender();
+        hideLoader();
+        loadTextFlow(els.pasteArea.value);
+      }
+    }
+
+    function goBack() {
+      cancelPendingFileRead();
+      if (state.isEditing) {
+        saveAndExitEditMode({ suppressRenderLoader: true });
+        hideLoader();
+      }
+      if (isSpeaking) stopTTS();
+      if (isAutoScrolling) toggleAutoScroll();
+      if (isRulerActive) setRulerActive(false, { announce: false });
+      if (getFullscreenElement()) toggleFullscreen();
+
+      if (els.readerView) els.readerView.classList.remove('active');
+      if (els.inputView) els.inputView.classList.remove('hidden');
+      if (els.backBtn) els.backBtn.classList.remove('show');
+      if (els.toolbar) {
+        els.toolbar.classList.add('hidden-bar');
+        els.toolbar.classList.remove('force-hidden', 'expanded');
+      }
+      if (els.backBtn) els.backBtn.classList.remove('force-hidden');
+      if (els.wordCount) els.wordCount.classList.remove('force-hidden');
+      if (els.focusRestore) els.focusRestore.classList.remove('show');
+      if (els.sheetBackdrop) els.sheetBackdrop.classList.remove('show');
+      document.body.classList.remove('mobile-sheet-active');
+      if (els.mobileFab) {
+        els.mobileFab.classList.remove('active', 'reader-active');
+        els.mobileFab.setAttribute('aria-expanded', 'false');
+        els.mobileFab.setAttribute('aria-label', 'Open Reading Settings');
+      }
+      resetSettingsDrawer();
+      
+      state.focusMode = false;
+      document.body.classList.remove('focus-mode-active');
+      if (els.toolbar) setContainerFocusable(els.toolbar, false);
+      if (els.pasteArea) els.pasteArea.value = state.currentText;
+      toggleClearBtn();
+      if (els.progressBar) els.progressBar.style.width = '0%';
+    }
+
+    function enterReader() {
+      if (els.inputView) els.inputView.classList.add('hidden');
+      if (els.readerView) els.readerView.classList.add('active');
+      if (els.backBtn) els.backBtn.classList.add('show');
+      if (els.toolbar) els.toolbar.classList.remove('hidden-bar', 'force-hidden', 'expanded');
+      if (els.backBtn) els.backBtn.classList.remove('force-hidden');
+      if (els.wordCount) els.wordCount.classList.remove('force-hidden');
+      if (els.focusRestore) els.focusRestore.classList.remove('show');
+      if (els.sheetBackdrop) els.sheetBackdrop.classList.remove('show');
+      document.body.classList.remove('mobile-sheet-active');
+      if (els.mobileFab) {
+        els.mobileFab.classList.add('reader-active');
+        els.mobileFab.classList.remove('active');
+        els.mobileFab.setAttribute('aria-expanded', 'false');
+        els.mobileFab.setAttribute('aria-label', 'Open Reading Settings');
+      }
+      resetSettingsDrawer();
+      
+      state.focusMode = false;
+      document.body.classList.remove('focus-mode-active');
+      if (els.toolbar) setContainerFocusable(els.toolbar, true);
+      scheduleWordCountUpdate();
+      resetToolbarTimer();
+
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+      }, 50);
+    }
+
+    // ===== Settings section bindings =====
+    function setSettingsSectionExpanded(section, expanded) {
+      if (!section) return;
+      const isExpanded = Boolean(expanded);
+      const toggle = section.querySelector('.settings-section-toggle');
+      const panelId = toggle ? toggle.getAttribute('aria-controls') : '';
+      const panel = panelId ? document.getElementById(panelId) : section.querySelector('.settings-section-panel');
+
+      section.classList.toggle('is-open', isExpanded);
+      if (toggle) toggle.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+      if (panel) {
+        panel.hidden = !isExpanded;
+        panel.setAttribute('aria-hidden', isExpanded ? 'false' : 'true');
+      }
+    }
+
+    function resetSettingsSections() {
+      if (els.settingsDrawer) els.settingsDrawer.classList.add('active');
+      els.settingsSections.forEach(section => {
+        setSettingsSectionExpanded(section, section.getAttribute('data-settings-section') === 'theme');
+      });
+      updateThemeSettingsSummary();
+    }
+
+    function toggleSettingsSection(section) {
+      if (!section) return;
+      const expanded = !section.classList.contains('is-open');
+      setSettingsSectionExpanded(section, expanded);
+      resetToolbarTimer();
+      if (expanded && isMobileSheetLayout() && els.toolbar) {
+        window.requestAnimationFrame(() => {
+          section.scrollIntoView({ block: 'nearest' });
+        });
+      }
+    }
+
+    function resetSettingsDrawer() {
+      resetSettingsSections();
+    }
+
+    function toggleMobileSheet() {
+      if (!els.toolbar) return;
+      const isExpanded = els.toolbar.classList.contains('expanded');
+      if (isExpanded) {
+        collapseMobileSheet();
+      } else {
+        expandMobileSheet();
+      }
+    }
+
+    function expandMobileSheet() {
+      if (els.toolbar) els.toolbar.classList.add('expanded');
+      if (els.sheetBackdrop) els.sheetBackdrop.classList.add('show');
+      if (els.toolbar) setContainerFocusable(els.toolbar, true);
+      if (isMobileSheetLayout()) {
+        document.body.classList.add('mobile-sheet-active');
+        if (els.toolbar) {
+          els.toolbar.scrollTop = 0;
+        }
+      }
+      if (els.mobileFab) {
+        els.mobileFab.classList.add('active');
+        els.mobileFab.setAttribute('aria-label', 'Close Reading Settings');
+        els.mobileFab.setAttribute('aria-expanded', 'true');
+      }
+    }
+
+    function collapseMobileSheet() {
+      if (els.toolbar) els.toolbar.classList.remove('expanded');
+      if (els.sheetBackdrop) els.sheetBackdrop.classList.remove('show');
+      if (els.toolbar) setContainerFocusable(els.toolbar, false);
+      document.body.classList.remove('mobile-sheet-active');
+      if (els.toolbar) {
+        els.toolbar.scrollTop = 0;
+      }
+      if (els.mobileFab) {
+        els.mobileFab.classList.remove('active');
+        els.mobileFab.setAttribute('aria-label', 'Open Reading Settings');
+        els.mobileFab.setAttribute('aria-expanded', 'false');
+      }
+      resetSettingsDrawer();
+    }
+
+    // ===== In-Context Inline Content Editor =====
+    function toggleEditing() {
+      if (state.isEditing) {
+        saveAndExitEditMode();
+      } else {
+        enterEditMode();
+      }
+    }
+
+    function enterEditMode() {
+      if (!els.readerContent || !els.editingBanner || !els.editBtn) return;
+      activeRenderId += 1;
+      hideLoader();
+      if (isSpeaking) stopTTS();
+      if (isAutoScrolling) toggleAutoScroll();
+
+      state.isEditing = true;
+      window.clearTimeout(state.toolbarTimer);
+      state.toolbarTimer = null;
+      if (els.toolbar) {
+        els.toolbar.classList.remove('hidden-bar');
+        setContainerFocusable(els.toolbar, true);
+      }
+      
+      // Swap content to raw source text block for easy inline edits
+      els.readerContent.textContent = state.currentText;
+      
+      els.readerContent.setAttribute('contenteditable', 'true');
+      els.readerContent.setAttribute('role', 'textbox');
+      els.readerContent.setAttribute('aria-label', 'Editable reader text');
+      els.readerContent.setAttribute('aria-multiline', 'true');
+      els.editingBanner.classList.add('show');
+      setEditingLayoutActive(true);
+      els.editBtn.innerHTML = '<span aria-hidden="true">&#x1F4BE;</span> Save';
+      els.editBtn.classList.add('active');
+      els.editBtn.setAttribute('title', 'Save and Exit');
+      els.editBtn.setAttribute('aria-label', 'Save and Exit');
+      els.editBtn.setAttribute('aria-pressed', 'true');
+      els.readerContent.focus();
+
+      announceLive('Editing mode activated. Focus moved to raw reader text.');
+    }
+
+    function saveAndExitEditMode(options = {}) {
+      if (!els.readerContent || !els.editingBanner || !els.editBtn) return;
+      window.clearTimeout(editDebounceTimer);
+      editDebounceTimer = null;
+      state.isEditing = false;
+      els.readerContent.removeAttribute('contenteditable');
+      els.readerContent.removeAttribute('role');
+      els.readerContent.removeAttribute('aria-label');
+      els.readerContent.removeAttribute('aria-multiline');
+      els.editingBanner.classList.remove('show');
+      setEditingLayoutActive(false);
+      els.editBtn.innerHTML = '<span aria-hidden="true">&#x270F;&#xFE0F;</span> Edit';
+      els.editBtn.classList.remove('active');
+      els.editBtn.setAttribute('title', 'Edit Text');
+      els.editBtn.setAttribute('aria-label', 'Edit Text');
+      els.editBtn.setAttribute('aria-pressed', 'false');
+
+      const editedText = els.readerContent.innerText || '';
+      state.currentText = editedText;
+
+      // Re-compile raw markdown back into safe HTML blocks
+      renderTextAsync(state.currentText, () => {
+        scheduleWordCountUpdate();
+        announceLive('Changes kept for this session. Reading mode restored.');
+        showStatus('Edits kept for this session.', 'success');
+      }, { suppressLoader: Boolean(options.suppressRenderLoader) });
+    }
+
+    function updateEditingLayoutOffset() {
+      if (!els.editingBanner || !document.body.classList.contains('editing-mode-active')) return;
+      const height = Math.ceil(els.editingBanner.getBoundingClientRect().height || 0);
+      if (height > 0) {
+        document.documentElement.style.setProperty('--editing-banner-height', `${height}px`);
+      }
+    }
+
+    function setEditingLayoutActive(active) {
+      document.body.classList.toggle('editing-mode-active', Boolean(active));
+      if (active) {
+        window.requestAnimationFrame(updateEditingLayoutOffset);
+        return;
+      }
+      document.documentElement.style.removeProperty('--editing-banner-height');
+    }
+
+    function insertPlainTextAtSelection(text) {
+      if (!text || !els.readerContent) return;
+      const selection = window.getSelection ? window.getSelection() : null;
+      if (!selection || selection.rangeCount === 0 || !els.readerContent.contains(selection.anchorNode)) {
+        els.readerContent.appendChild(document.createTextNode(text));
+        return;
+      }
+
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      const textNode = document.createTextNode(text);
+      range.insertNode(textNode);
+      range.setStartAfter(textNode);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    function handlePlainTextEditPaste(event) {
+      if (!state.isEditing || !els.readerContent || event.currentTarget !== els.readerContent) return;
+      event.preventDefault();
+      const clipboard = event.clipboardData || window.clipboardData;
+      const text = clipboard ? clipboard.getData('text/plain') : '';
+      insertPlainTextAtSelection(text);
+    }
+
+    function announceLive(msg) {
+      let live = document.getElementById('liveAnnouncer');
+      if (!live) {
+        live = document.createElement('div');
+        live.id = 'liveAnnouncer';
+        live.className = 'sr-only';
+        live.setAttribute('aria-live', 'polite');
+        live.style.position = 'absolute';
+        live.style.width = '1px';
+        live.style.height = '1px';
+        live.style.padding = '0';
+        live.style.margin = '-1px';
+        live.style.overflow = 'hidden';
+        live.style.clip = 'rect(0, 0, 0, 0)';
+        live.style.whiteSpace = 'nowrap';
+        live.style.border = '0';
+        document.body.appendChild(live);
+      }
+      live.textContent = '';
+      setTimeout(() => {
+        live.textContent = msg;
+      }, 50);
+    }
+
+    function updateMarginStyle(value) {
+      if (!els.readerContent) return;
+      let padding = clampNumber(value, 24, 12, 80);
+      if (window.innerWidth <= 640) {
+        padding = Math.min(padding, 24); // Safe mobile margins clamp
+      }
+      els.readerContent.style.paddingLeft = `${padding}px`;
+      els.readerContent.style.paddingRight = `${padding}px`;
+    }
+
+    // ===== Focus Mode Handling =====
+    function setContainerFocusable(container, enabled) {
+      if (!container) return;
+      container.querySelectorAll('button, input, [tabindex], select').forEach(element => {
+        if (enabled) {
+          if (element.dataset.savedTabindex !== undefined) {
+            const previous = element.dataset.savedTabindex;
+            if (previous) element.setAttribute('tabindex', previous);
+            else element.removeAttribute('tabindex');
+            delete element.dataset.savedTabindex;
+          }
+          return;
+        }
+
+        if (element.dataset.savedTabindex === undefined) {
+          element.dataset.savedTabindex = element.hasAttribute('tabindex') ? element.getAttribute('tabindex') : '';
+        }
+        element.setAttribute('tabindex', '-1');
+      });
+    }
+
+    function isMobileSheetLayout() {
+      return window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
+    }
+
+    function toggleFocus() {
+      if (!els.toolbar || !els.backBtn || !els.wordCount || !els.focusRestore || !els.focusBtn) return;
+      state.focusMode = !state.focusMode;
+      document.body.classList.toggle('focus-mode-active', state.focusMode);
+
+      if (state.focusMode) {
+        if (isMobileSheetLayout()) {
+          collapseMobileSheet();
+        }
+        els.toolbar.classList.add('force-hidden');
+        els.backBtn.classList.add('force-hidden');
+        els.wordCount.classList.add('force-hidden');
+        els.focusRestore.classList.add('show');
+        els.focusBtn.setAttribute('aria-pressed', 'true');
+        els.focusBtn.setAttribute('aria-label', 'Show UI');
+        els.focusBtn.setAttribute('title', 'Show UI');
+        setContainerFocusable(els.toolbar, false);
+        window.clearTimeout(state.toolbarTimer);
+        announceLive('Focus mode activated. UI controls hidden.');
+        return;
+      }
+
+      els.toolbar.classList.remove('force-hidden');
+      els.backBtn.classList.remove('force-hidden');
+      els.wordCount.classList.remove('force-hidden');
+      els.focusRestore.classList.remove('show');
+      els.focusBtn.setAttribute('aria-pressed', 'false');
+      els.focusBtn.setAttribute('aria-label', 'Hide UI');
+      els.focusBtn.setAttribute('title', 'Hide UI');
+      setContainerFocusable(els.toolbar, true);
+      resetToolbarTimer();
+      announceLive('Focus mode deactivated. UI controls visible.');
+    }
+
+    function resetToolbarTimer() {
+      if (state.focusMode || state.isEditing || !els.toolbar) return;
+
+      if (isMobileSheetLayout()) {
+        window.clearTimeout(state.toolbarTimer);
+        setContainerFocusable(els.toolbar, els.toolbar.classList.contains('expanded'));
+        return;
+      }
+
+      els.toolbar.classList.remove('hidden-bar');
+      setContainerFocusable(els.toolbar, true);
+      window.clearTimeout(state.toolbarTimer);
+
+      state.toolbarTimer = window.setTimeout(() => {
+        if (state.isEditing) return;
+        if (els.toolbar.contains(document.activeElement)) return;
+        els.toolbar.classList.add('hidden-bar');
+        setContainerFocusable(els.toolbar, false);
+      }, 3500);
+    }
+
+    function showGestureHint(text) {
+      if (!els.gestureHintText || !els.gestureHint) return;
+      els.gestureHintText.textContent = text;
+      els.gestureHint.classList.add('show');
+      window.clearTimeout(state.gestureHintTimer);
+      state.gestureHintTimer = window.setTimeout(() => {
+        els.gestureHint.classList.remove('show');
+      }, 700);
+    }
+
+    // ===== Swipe Carousel Event Bindings =====
+    function getCarouselWidth() {
+      return els.presetWindow ? (els.presetWindow.getBoundingClientRect().width || 1) : 1;
+    }
+
+    function updateCarouselDrag() {
+      if (!state.isDraggingCarousel || !els.presetTrack) return;
+
+      let dx = state.dragCurrentX - state.dragStartX;
+      const list = getPresets();
+      if ((state.dragStartIndex === 0 && dx > 0) || 
+          (state.dragStartIndex === list.length - 1 && dx < 0)) {
+        dx = dx * 0.35; // Rubber band bounds constraint
+      }
+
+      const pct = (dx / state.carouselWidth) * 100;
+      els.presetTrack.style.transform = `translate3d(${(-state.dragStartIndex * 100) + pct}%, 0, 0)`;
+      window.requestAnimationFrame(updateCarouselDrag);
+    }
+
+    function startCarouselDrag(x) {
+      if (!els.presetTrack) return;
+      state.carouselWidth = getCarouselWidth();
+      state.dragStartX = x;
+      state.dragCurrentX = x;
+      state.dragStartIndex = state.currentPresetIndex;
+      state.isDraggingCarousel = true;
+      state.lastCarouselDragDistance = 0;
+      els.presetTrack.classList.remove('snapping');
+      els.presetTrack.classList.add('dragging');
+      window.requestAnimationFrame(updateCarouselDrag);
+    }
+
+    function endCarouselDrag() {
+      if (!state.isDraggingCarousel) return;
+
+      state.isDraggingCarousel = false;
+      const dx = state.dragCurrentX - state.dragStartX;
+      state.lastCarouselDragDistance = Math.abs(dx);
+      const threshold = state.carouselWidth * 0.18;
+      const list = getPresets();
+
+      if (dx < -threshold && state.currentPresetIndex < list.length - 1) state.currentPresetIndex++;
+      else if (dx > threshold && state.currentPresetIndex > 0) state.currentPresetIndex--;
+
+      applyPreset(state.currentPresetIndex);
+    }
+
+    function hasSelectedText() {
+      const selection = window.getSelection ? window.getSelection() : null;
+      return Boolean(selection && selection.toString().trim().length > 0);
+    }
+
+    function isBlockedGestureTarget(target) {
+      const element = getElementTarget(target);
+      if (!element) return false;
+
+      return Boolean(element.closest([
+        'a',
+        'button',
+        'input',
+        'select',
+        'textarea',
+        'label',
+        'pre',
+        'code',
+        '[contenteditable]',
+        '[role="button"]',
+        '[role="link"]',
+        '[role="slider"]',
+        '[role="textbox"]',
+        '[role="combobox"]',
+        '[role="checkbox"]',
+        '[role="radio"]'
+      ].join(',')));
+    }
+
+    function canStartPresetGesture(target) {
+      return !state.isEditing && !hasSelectedText() && !isBlockedGestureTarget(target);
+    }
+
+    function attachGestureArea(element) {
+      if (!element) return;
+      element.addEventListener('touchstart', event => {
+        if (event.touches.length !== 1) return;
+        if (!canStartPresetGesture(event.target)) {
+          state.isGesture = false;
+          return;
+        }
+        
+        state.gestureStartX = event.touches[0].screenX;
+        state.gestureStartY = event.touches[0].screenY;
+        state.gestureStartTime = Date.now();
+        state.isGesture = true;
+      }, { passive: true });
+
+      element.addEventListener('touchmove', event => {
+        if (!state.isGesture) return;
+        const dx = Math.abs(event.touches[0].screenX - state.gestureStartX);
+        const dy = Math.abs(event.touches[0].screenY - state.gestureStartY);
+        if (dy > dx && dy > 20) state.isGesture = false;
+      }, { passive: true });
+
+      element.addEventListener('touchend', event => {
+        if (!state.isGesture) return;
+        state.isGesture = false;
+        if (hasSelectedText() || isBlockedGestureTarget(event.target)) return;
+
+        const dt = Date.now() - state.gestureStartTime;
+        const dx = event.changedTouches[0].screenX - state.gestureStartX;
+        const dy = event.changedTouches[0].screenY - state.gestureStartY;
+        if (dt > 500 || Math.abs(dx) < 55 || Math.abs(dy) > Math.abs(dx) * 0.7) return;
+
+        if (dx < 0) nextPreset();
+        else prevPreset();
+      }, { passive: true });
+
+      element.addEventListener('mousedown', event => {
+        if (!canStartPresetGesture(event.target)) {
+          state.isGesture = false;
+          return;
+        }
+
+        state.gestureStartX = event.clientX;
+        state.gestureStartY = event.clientY;
+        state.gestureStartTime = Date.now();
+        state.isGesture = true;
+      });
+
+      element.addEventListener('mouseup', event => {
+        if (!state.isGesture) return;
+        state.isGesture = false;
+        if (hasSelectedText() || isBlockedGestureTarget(event.target)) return;
+
+        const dt = Date.now() - state.gestureStartTime;
+        const dx = event.clientX - state.gestureStartX;
+        const dy = event.clientY - state.gestureStartY;
+        if (dt > 500 || Math.abs(dx) < 55 || Math.abs(dy) > Math.abs(dx) * 0.7) return;
+
+        if (dx < 0) nextPreset();
+        else prevPreset();
+      });
+
+      element.addEventListener('mouseleave', () => {
+        state.isGesture = false;
+      });
+    }
+
+    function isInteractiveShortcutTarget(target) {
+      const element = getElementTarget(target);
+      if (!element) return false;
+      return Boolean(element.closest('input, select, textarea, button, a, [contenteditable="true"], [role="button"], [role="slider"], [role="textbox"], [role="combobox"]'));
+    }
+
+    function canUseGlobalPresetShortcut(event) {
+      if (state.isEditing || !els.tocDialog || els.tocDialog.open) return false;
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return false;
+      if (event.target === els.presetWindow) return false;
+      return !isInteractiveShortcutTarget(event.target);
+    }
+
+    // ===== Safe DOM Event Bindings =====
+    function bindEvents() {
+      if (els.readBtn) els.readBtn.addEventListener('click', loadFromPaste);
+      if (els.fileInput) els.fileInput.addEventListener('change', handleFile);
+      if (els.clearBtn) els.clearBtn.addEventListener('click', clearText);
+      if (els.backBtn) els.backBtn.addEventListener('click', goBack);
+      if (els.focusBtn) els.focusBtn.addEventListener('click', toggleFocus);
+      if (els.editBtn) els.editBtn.addEventListener('click', toggleEditing);
+      if (els.focusRestore) els.focusRestore.addEventListener('click', toggleFocus);
+      if (els.modeLight) els.modeLight.addEventListener('click', () => setMode('light'));
+      if (els.modeDark) els.modeDark.addEventListener('click', () => setMode('dark'));
+      
+      document.querySelectorAll('[data-size]').forEach(button => {
+        button.addEventListener('click', () => setSize(button.getAttribute('data-size')));
+      });
+
+      if (els.presetWindow) {
+        els.presetWindow.addEventListener('touchstart', event => {
+          if (event.touches.length === 1 && canStartPresetGesture(event.target)) startCarouselDrag(event.touches[0].clientX);
+        }, { passive: true });
+        els.presetWindow.addEventListener('touchmove', event => {
+          if (state.isDraggingCarousel) state.dragCurrentX = event.touches[0].clientX;
+        }, { passive: true });
+        els.presetWindow.addEventListener('touchend', endCarouselDrag, { passive: true });
+        els.presetWindow.addEventListener('mousedown', event => {
+          if (canStartPresetGesture(event.target)) startCarouselDrag(event.clientX);
+        });
+        els.presetWindow.addEventListener('click', event => {
+          if (isBlockedGestureTarget(event.target) || hasSelectedText()) return;
+          if (state.isDraggingCarousel) return;
+          if (state.lastCarouselDragDistance > 5) {
+            state.lastCarouselDragDistance = 0;
+            return;
+          }
+          const target = getElementTarget(event.target);
+          const card = target ? target.closest('.preset-card') : null;
+          if (!card) return;
+          applyPreset(card.getAttribute('data-index'));
+        });
+        els.presetWindow.addEventListener('keydown', event => {
+          if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            nextPreset();
+          } else if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            prevPreset();
+          } else if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            applyPreset(state.currentPresetIndex);
+          }
+        });
+      }
+
+      window.addEventListener('mousemove', event => {
+        if (state.isDraggingCarousel) state.dragCurrentX = event.clientX;
+      });
+      window.addEventListener('mouseup', endCarouselDrag);
+      if (els.arrowLeft) els.arrowLeft.addEventListener('click', prevPreset);
+      if (els.arrowRight) els.arrowRight.addEventListener('click', nextPreset);
+
+      if (els.readerContent) attachGestureArea(els.readerContent);
+      if (els.readerContent) els.readerContent.addEventListener('paste', handlePlainTextEditPaste);
+      if (els.wordCount) attachGestureArea(els.wordCount);
+
+      window.addEventListener('scroll', () => {
+        if (!els.readerView || !els.readerView.classList.contains('active') || !els.progressBar) return;
+
+        const winScroll = getScrollTop();
+        const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+        const scrolled = height > 0 ? (winScroll / height) * 100 : 0;
+        els.progressBar.style.width = `${scrolled}%`;
+      }, { passive: true });
+
+      if (els.inputView) {
+        els.inputView.addEventListener('dragover', event => {
+          event.preventDefault();
+          els.inputView.classList.add('drag-active');
+        });
+        els.inputView.addEventListener('dragleave', event => {
+          event.preventDefault();
+          els.inputView.classList.remove('drag-active');
+        });
+        els.inputView.addEventListener('drop', event => {
+          event.preventDefault();
+          els.inputView.classList.remove('drag-active');
+          if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+            handleFile({ target: { files: [event.dataTransfer.files[0]], value: '' } });
+          }
+        });
+      }
+
+      if (els.pasteArea) {
+        els.pasteArea.addEventListener('input', () => {
+          toggleClearBtn();
+          clearStatus();
+        });
+      }
+
+      if (els.toolbar) {
+        els.toolbar.addEventListener('click', resetToolbarTimer);
+        els.toolbar.addEventListener('touchstart', resetToolbarTimer, { passive: true });
+        els.toolbar.addEventListener('touchmove', resetToolbarTimer, { passive: true });
+        els.toolbar.addEventListener('mouseenter', () => window.clearTimeout(state.toolbarTimer));
+        els.toolbar.addEventListener('mouseleave', resetToolbarTimer);
+        els.toolbar.addEventListener('focusin', () => window.clearTimeout(state.toolbarTimer));
+        els.toolbar.addEventListener('focusout', resetToolbarTimer);
+      }
+
+      document.addEventListener('click', event => {
+        if (els.readerView && els.readerView.classList.contains('active')
+          && els.toolbar && !els.toolbar.contains(event.target)
+          && els.backBtn && !els.backBtn.contains(event.target)
+          && els.focusRestore && !els.focusRestore.contains(event.target)
+          && els.tocDialog && !els.tocDialog.contains(event.target)
+          && els.mobileFab && !els.mobileFab.contains(event.target)
+          && els.sheetBackdrop && !els.sheetBackdrop.contains(event.target)) {
+          resetToolbarTimer();
+        }
+      });
+
+      document.addEventListener('touchstart', event => {
+        if (els.readerView && els.readerView.classList.contains('active')
+          && els.toolbar && !els.toolbar.contains(event.target)
+          && els.backBtn && !els.backBtn.contains(event.target)
+          && els.focusRestore && !els.focusRestore.contains(event.target)
+          && els.tocDialog && !els.tocDialog.contains(event.target)
+          && els.mobileFab && !els.mobileFab.contains(event.target)
+          && els.sheetBackdrop && !els.sheetBackdrop.contains(event.target)) {
+          resetToolbarTimer();
+        }
+      }, { passive: true });
+
+      document.addEventListener('scroll', () => {
+        if (!els.readerView || !els.readerView.classList.contains('active')) return;
+        if (els.toolbar && els.toolbar.contains(document.activeElement)) resetToolbarTimer();
+      }, { passive: true });
+
+      document.addEventListener('keydown', event => {
+        if (!els.readerView || !els.readerView.classList.contains('active')) return;
+        if (event.key === 'Escape') {
+          if (els.tocDialog && els.tocDialog.open) closeTocDialog();
+          else if (state.focusMode) toggleFocus();
+          else goBack();
+        }
+        if (event.key === 'ArrowRight' && canUseGlobalPresetShortcut(event)) {
+          event.preventDefault();
+          nextPreset();
+        }
+        if (event.key === 'ArrowLeft' && canUseGlobalPresetShortcut(event)) {
+          event.preventDefault();
+          prevPreset();
+        }
+      });
+
+      if (els.fullscreenBtn) els.fullscreenBtn.addEventListener('click', toggleFullscreen);
+      if (els.autoScrollBtn) els.autoScrollBtn.addEventListener('click', toggleAutoScroll);
+      if (els.ttsBtn) els.ttsBtn.addEventListener('click', toggleTTS);
+      if (els.ttsStopBtn) els.ttsStopBtn.addEventListener('click', stopTTS);
+      if (els.audioPlayPauseBtn) els.audioPlayPauseBtn.addEventListener('click', toggleTTS);
+      if (els.audioStopBtn) els.audioStopBtn.addEventListener('click', stopTTS);
+      if (els.audioSpeedBtn) els.audioSpeedBtn.addEventListener('click', cycleVoiceSpeed);
+      if (els.downloadBtn) els.downloadBtn.addEventListener('click', downloadText);
+
+      if (els.voiceSelect) {
+        els.voiceSelect.addEventListener('change', () => {
+          if (ttsState === STATE_PLAYING) {
+            restartFromWord(currentWordIndex >= 0 ? currentWordIndex : 0);
+          }
+        });
+      }
+      
+      document.addEventListener('fullscreenchange', () => {
+         updateFullscreenButton();
+      });
+      document.addEventListener('webkitfullscreenchange', () => {
+         updateFullscreenButton();
+      });
+      document.addEventListener('msfullscreenchange', () => {
+         updateFullscreenButton();
+      });
+
+      // Dialog Events and Focus Restoration controls
+      if (els.tocBtn) els.tocBtn.addEventListener('click', populateAndShowTOC);
+      if (els.closeTocBtn) els.closeTocBtn.addEventListener('click', closeTocDialog);
+      if (els.tocDialog) {
+        setupFocusTrap(els.tocDialog);
+        els.tocDialog.addEventListener('click', (e) => {
+           const rect = els.tocDialog.getBoundingClientRect();
+           if (e.clientY < rect.top || e.clientY > rect.bottom || e.clientX < rect.left || e.clientX > rect.right) {
+              closeTocDialog();
+           }
+        });
+        els.tocDialog.addEventListener('close', () => {
+          if (lastActiveElement && document.contains(lastActiveElement) && typeof lastActiveElement.focus === 'function') {
+            try {
+              lastActiveElement.focus({ preventScroll: true });
+            } catch (err) {
+              lastActiveElement.focus();
+            }
+          }
+        });
+      }
+
+      // Reading Ruler Event Mapping
+      if (els.rulerBtn) els.rulerBtn.addEventListener('click', toggleRuler);
+      if (els.readerContent) {
+        els.readerContent.addEventListener('mousemove', updateRulerPosition);
+        els.readerContent.addEventListener('touchmove', (e) => {
+          if (!isRulerActive || e.touches.length !== 1 || !els.readingRuler) return;
+          const touch = e.touches[0];
+          const target = getElementTarget(document.elementFromPoint(touch.clientX, touch.clientY));
+          if (target && els.readerContent.contains(target)) {
+            const textContainer = target.closest('p, li, h1, h2, h3, blockquote') || target;
+            const rect = textContainer.getBoundingClientRect();
+            const scrollTop = getScrollTop();
+            const top = rect.top + scrollTop;
+            els.readingRuler.style.height = `${rect.height + 4}px`;
+            els.readingRuler.style.transform = `translate3d(0, ${top - 2}px, 0)`;
+          }
+        }, { passive: true });
+
+        // Click-to-speak on document words
+        els.readerContent.addEventListener('click', (event) => {
+          if (state.isEditing) return;
+          const target = getElementTarget(event.target);
+          const wordEl = target ? target.closest('.tts-word') : null;
+          if (wordEl && wordEl.hasAttribute('data-word-idx')) {
+            const idx = parseInt(wordEl.getAttribute('data-word-idx'), 10);
+            if (!isNaN(idx) && idx >= 0 && idx < wordMeta.length) {
+              startSpeech(idx);
+            }
+          }
+        });
+      }
+
+      els.settingsSectionToggles.forEach(toggle => {
+        toggle.addEventListener('click', () => {
+          toggleSettingsSection(toggle.closest('[data-settings-section]'));
+        });
+      });
+
+      // Sliders Typography Range Hooks
+      if (els.lineHeightInput) {
+        els.lineHeightInput.addEventListener('input', () => {
+          const val = clampNumber(els.lineHeightInput.value, 1.85, 1.4, 2.6);
+          els.lineHeightInput.value = val;
+          if (els.readerContent) els.readerContent.style.lineHeight = val;
+        });
+      }
+
+      if (els.letterSpacingInput) {
+        els.letterSpacingInput.addEventListener('input', () => {
+          const val = clampNumber(els.letterSpacingInput.value, -0.015, -0.03, 0.15);
+          els.letterSpacingInput.value = val;
+          if (els.readerContent) els.readerContent.style.letterSpacing = `${val}em`;
+        });
+      }
+
+      if (els.marginInput) {
+        els.marginInput.addEventListener('input', () => {
+          const val = clampNumber(els.marginInput.value, 24, 12, 80);
+          els.marginInput.value = val;
+          updateMarginStyle(val);
+        });
+      }
+
+      if (els.smartHeadingsInput) {
+        els.smartHeadingsInput.addEventListener('change', () => {
+          state.smartHeadings = els.smartHeadingsInput.checked;
+          announceLive(`Smart headings ${state.smartHeadings ? 'enabled' : 'disabled'}.`);
+
+          if (state.currentText && els.readerView && els.readerView.classList.contains('active') && !state.isEditing) {
+            const currentScroll = getScrollTop();
+            renderTextAsync(state.currentText, () => {
+              scheduleWordCountUpdate();
+              window.scrollTo(0, currentScroll);
+            });
+          }
+        });
+      }
+      
+      window.addEventListener('resize', () => {
+        if (els.marginInput) {
+          updateMarginStyle(parseFloat(els.marginInput.value));
+        }
+        if (state.isEditing) updateEditingLayoutOffset();
+      });
+
+      if (els.voiceRateInput && els.voiceRateVal) {
+        els.voiceRateInput.addEventListener('input', () => {
+          const val = clampNumber(els.voiceRateInput.value, 1.0, 0.5, 2.5);
+          els.voiceRateInput.value = val;
+          els.voiceRateVal.textContent = `${val.toFixed(1)}x`;
+          if (els.audioSpeedBtn) els.audioSpeedBtn.textContent = `${val.toFixed(1)}x`;
+          announceLive(`Speech speed changed to ${val.toFixed(1)}x.`);
+        });
+        els.voiceRateInput.addEventListener('change', () => {
+          if (ttsState === STATE_PLAYING) {
+            restartFromWord(currentWordIndex >= 0 ? currentWordIndex : 0);
+          }
+        });
+      }
+
+      if (els.scrollSpeedInput && els.scrollSpeedVal) {
+        els.scrollSpeedInput.addEventListener('input', () => {
+          const val = clampNumber(els.scrollSpeedInput.value, 0.04, 0.01, 0.2);
+          els.scrollSpeedInput.value = val;
+          autoScrollSpeed = val;
+          els.scrollSpeedVal.textContent = `${(val / 0.04).toFixed(1)}x`;
+          announceLive(`Auto-scroll speed changed to ${(val / 0.04).toFixed(1)}x.`);
+        });
+      }
+
+      // Mobile Bottom Sheet Event listeners
+      if (els.mobileFab) els.mobileFab.addEventListener('click', toggleMobileSheet);
+      if (els.sheetBackdrop) els.sheetBackdrop.addEventListener('click', collapseMobileSheet);
+      if (els.bottomSheetHandle) els.bottomSheetHandle.addEventListener('click', collapseMobileSheet);
+
+      // Save Banner triggers
+      if (els.saveEditBannerBtn) els.saveEditBannerBtn.addEventListener('click', saveAndExitEditMode);
+
+      if (els.readerContent) {
+        els.readerContent.addEventListener('input', () => {
+          if (!state.isEditing) return;
+
+          window.clearTimeout(editDebounceTimer);
+          editDebounceTimer = window.setTimeout(() => {
+            editDebounceTimer = null;
+            if (!state.isEditing) return;
+            const text = els.readerContent.innerText || '';
+            state.currentText = text;
+            scheduleWordCountUpdate();
+            showStatus('Edits kept for this session.', 'success');
+          }, 1000);
+        });
+      }
+
+      // Page lifecycle listeners to prevent background audio leaks
+      if (speechSupported && synth) {
+        window.addEventListener('pagehide', () => {
+          if (pageHideTimer) clearTimeout(pageHideTimer);
+          if (ttsState === STATE_PLAYING) {
+            visibilityInterrupted = true;
+            stopKeepAliveTimer();
+            if (isMobile) {
+              speechGeneration++;
+              try { synth.cancel(); } catch (e) {}
+            } else {
+              try { synth.pause(); } catch (e) {}
+            }
+            setTTSState(STATE_PAUSED);
+          }
+          pageHideTimer = setTimeout(() => {
+            if (visibilityInterrupted && ttsState === STATE_PAUSED) {
+              speechCanceledWhileHidden = true;
+            }
+            try { synth.cancel(); } catch (e) {}
+          }, PAGEHIDE_CANCEL_TIMEOUT);
+        });
+
+        window.addEventListener('pageshow', () => {
+          if (pageHideTimer) {
+            clearTimeout(pageHideTimer);
+            pageHideTimer = null;
+          }
+        });
+
+        document.addEventListener('visibilitychange', () => {
+          if (document.hidden) {
+            if (ttsState === STATE_PLAYING) {
+              visibilityInterrupted = true;
+              stopKeepAliveTimer();
+              if (isMobile) {
+                speechGeneration++;
+                try { synth.cancel(); } catch (e) {}
+              } else {
+                try { synth.pause(); } catch (e) {}
+              }
+              setTTSState(STATE_PAUSED);
+            }
+          } else if (visibilityInterrupted) {
+            visibilityInterrupted = false;
+          }
+        });
+      }
+    }
+
+    function registerServiceWorker() {
+      if (!('serviceWorker' in navigator)) return;
+
+      const register = () => {
+        navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+          .catch(err => {
+            console.warn('Service worker registration failed.', err);
+          });
+      };
+
+      if (document.readyState === 'complete') {
+        register();
+      } else {
+        window.addEventListener('load', register, { once: true });
+      }
+    }
+
+    function init() {
+      cleanupLegacyBrowserStorage();
+      registerServiceWorker();
+      bindEvents();
+      resetSettingsSections();
+
+      state.smartHeadings = true;
+      if (els.smartHeadingsInput) els.smartHeadingsInput.checked = state.smartHeadings;
+
+      setMode('light', { presetIndex: 0, resetTimer: false });
+
+      setSize('medium');
+      toggleClearBtn();
+      if (els.toolbar) setContainerFocusable(els.toolbar, false);
+
+      const defaultLineHeight = 1.85;
+      if (els.lineHeightInput) els.lineHeightInput.value = defaultLineHeight;
+      if (els.readerContent) els.readerContent.style.lineHeight = defaultLineHeight;
+
+      const defaultLetterSpacing = -0.015;
+      if (els.letterSpacingInput) els.letterSpacingInput.value = defaultLetterSpacing;
+      if (els.readerContent) els.readerContent.style.letterSpacing = `${defaultLetterSpacing}em`;
+
+      const defaultMargin = 24;
+      if (els.marginInput) els.marginInput.value = defaultMargin;
+      updateMarginStyle(defaultMargin);
+
+      const defaultVoiceRate = 1.0;
+      if (els.voiceRateInput) els.voiceRateInput.value = defaultVoiceRate;
+      if (els.voiceRateVal) els.voiceRateVal.textContent = `${defaultVoiceRate.toFixed(1)}x`;
+      if (els.audioSpeedBtn) els.audioSpeedBtn.textContent = `${defaultVoiceRate.toFixed(1)}x`;
+
+      const defaultScrollSpeed = 0.04;
+      if (els.scrollSpeedInput) els.scrollSpeedInput.value = defaultScrollSpeed;
+      autoScrollSpeed = defaultScrollSpeed;
+      if (els.scrollSpeedVal) els.scrollSpeedVal.textContent = `${(autoScrollSpeed / 0.04).toFixed(1)}x`;
+
+      if (speechSupported && synth) {
+        populateVoices();
+        if ('onvoiceschanged' in synth) {
+          synth.onvoiceschanged = populateVoices;
+        }
+        pollVoices();
+      }
+    }
+
+    init();
+  })();
