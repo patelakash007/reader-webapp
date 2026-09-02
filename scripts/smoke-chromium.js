@@ -1,7 +1,7 @@
-const fs = require('node:fs');
-const path = require('node:path');
-const { spawn } = require('node:child_process');
-const {
+import fs from 'node:fs';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
+import {
   browserEnvVars,
   ensureOutputDir,
   findBrowserExecutable,
@@ -9,7 +9,7 @@ const {
   startStaticServer,
   waitForServer,
   writeJson
-} = require('./browser-smoke-utils');
+} from './browser-smoke-utils.js';
 
 function runBrowser(executablePath, args, stdio = 'pipe') {
   return new Promise((resolve, reject) => {
