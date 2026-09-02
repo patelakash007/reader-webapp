@@ -1,25 +1,57 @@
 'use strict';
 
-const assert = require('node:assert');
-const fs = require('node:fs');
-const path = require('node:path');
+import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 console.log('====================================================');
 console.log('STARTING FORENSIC EMPIRICAL STRESS TEST SUITE');
 console.log('====================================================');
 
-const scriptSource = fs.readFileSync(path.join(__dirname, '../script.js'), 'utf8');
+const rootDir = path.resolve(__dirname, '..');
+const moduleFiles = [
+  'app.js',
+  'reader.js',
+  'parser.js',
+  'tts.js',
+  'settings.js',
+  'storage.js',
+  'ui.js',
+  'utils.js'
+];
+
+function loadModularSources() {
+  const sources = {};
+  for (const file of moduleFiles) {
+    const fullPath = path.join(rootDir, file);
+    if (fs.existsSync(fullPath)) {
+      sources[file] = fs.readFileSync(fullPath, 'utf8');
+    }
+  }
+  const scriptPath = path.join(rootDir, 'script.js');
+  if (fs.existsSync(scriptPath)) {
+    sources['script.js'] = fs.readFileSync(scriptPath, 'utf8');
+  }
+  const combined = Object.values(sources).join('\n');
+  return { sources, combined };
+}
+
+const { sources: moduleSources, combined: scriptSource } = loadModularSources();
 
 // ----------------------------------------------------
 // 1. AST / Lexical Integrity Checks
 // ----------------------------------------------------
 console.log('\n--- 1. Lexical and AST Forensics ---');
-assert(!scriptSource.includes('.substr('), 'Integrity check: .substr must not exist in script.js');
+assert(!scriptSource.includes('.substr('), 'Integrity check: .substr must not exist in modular source files');
 assert(scriptSource.includes('.slice('), 'Integrity check: .slice must be used');
-assert(scriptSource.includes('speechGeneration'), 'Integrity check: speechGeneration counter must exist');
-assert(scriptSource.includes('tokenizeReaderDOM'), 'Integrity check: tokenizeReaderDOM must exist');
-assert(scriptSource.includes('chunkText'), 'Integrity check: chunkText must exist');
-assert(scriptSource.includes('extractPdfPageText'), 'Integrity check: extractPdfPageText must exist');
+assert(scriptSource.includes('speechGeneration'), 'Integrity check: speechGeneration counter must exist in tts.js');
+assert(scriptSource.includes('tokenizeReaderDOM'), 'Integrity check: tokenizeReaderDOM must exist in tts.js');
+assert(scriptSource.includes('chunkText'), 'Integrity check: chunkText must exist in tts.js');
+assert(scriptSource.includes('extractPdfPageText'), 'Integrity check: extractPdfPageText must exist in parser.js');
 console.log('✓ Lexical checks passed.');
 
 // ----------------------------------------------------
@@ -138,6 +170,16 @@ class MockNode {
       curr = curr.parentNode;
     }
     return null;
+  }
+
+  contains(target) {
+    if (!target) return false;
+    let curr = target;
+    while (curr) {
+      if (curr === this) return true;
+      curr = curr.parentElement || curr.parentNode;
+    }
+    return false;
   }
 
   get textContent() {

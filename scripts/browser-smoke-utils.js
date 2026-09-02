@@ -1,7 +1,10 @@
-const fs = require('node:fs');
-const http = require('node:http');
-const path = require('node:path');
+import fs from 'node:fs';
+import http from 'node:http';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const outputDir = path.join(rootDir, 'output', 'browser-smoke');
 
@@ -167,7 +170,7 @@ async function waitForServer(url, timeoutMs = 5000) {
   throw lastError || new Error('Timed out waiting for local server.');
 }
 
-module.exports = {
+export {
   browserEnvVars,
   ensureOutputDir,
   findBrowserExecutable,

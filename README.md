@@ -57,7 +57,14 @@ reader-webapp/
 |-- package-lock.json
 |-- index.html
 |-- style.css
-|-- script.js
+|-- app.js
+|-- reader.js
+|-- parser.js
+|-- tts.js
+|-- settings.js
+|-- storage.js
+|-- ui.js
+|-- utils.js
 |-- sw.js
 |-- manifest.webmanifest
 |-- README.md
@@ -115,11 +122,7 @@ Run the JavaScript syntax check:
 npm run test:syntax
 ```
 
-This runs:
-
-```bash
-node --check script.js
-```
+This runs syntax checks across all 8 ES modules (`app.js`, `reader.js`, `parser.js`, `tts.js`, `settings.js`, `storage.js`, `ui.js`, `utils.js`).
 
 Run the PWA app-shell validation:
 
