@@ -1,18 +1,11 @@
 'use strict';
 
-const CACHE_NAME = 'reader-webapp-shell-v6';
+const CACHE_NAME = 'reader-webapp-shell-v5';
 const APP_SHELL = [
   './',
   './index.html',
   './style.css',
-  './app.js',
-  './reader.js',
-  './parser.js',
-  './tts.js',
-  './settings.js',
-  './storage.js',
-  './ui.js',
-  './utils.js',
+  './script.js',
   './manifest.webmanifest',
   './vendor/pdf.min.js',
   './vendor/pdf.worker.min.js',

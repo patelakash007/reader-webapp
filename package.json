@@ -2,19 +2,15 @@
   "name": "reader-webapp",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "description": "Local-first browser reader app.",
   "scripts": {
-    "test:syntax": "node --check app.js && node --check reader.js && node --check parser.js && node --check tts.js && node --check settings.js && node --check storage.js && node --check ui.js && node --check utils.js",
+    "test:syntax": "node --check script.js",
     "test:pwa": "node scripts/validate-pwa.js",
     "test:unit": "node tests/test_reader.js",
-    "test:e2e": "node tests/test_e2e_4tier.mjs",
-    "test:challenger": "node tests/test_challenger_m1_adv.js && node tests/test_challenger_m1_deep_stress.mjs && node tests/test_challenger_m2.mjs && node tests/test_challenger_m3.mjs && node tests/test_challenger_deep_scope.mjs && node tests/test_empirical_stress.js",
-    "test:all": "yarn test && yarn test:e2e && yarn test:challenger",
     "test:smoke": "node scripts/smoke-playwright.js",
     "test:deep": "node scripts/deep-playwright.js",
     "test:chromium": "node scripts/smoke-chromium.js",
-    "test": "yarn test:syntax && yarn test:pwa && yarn test:unit"
+    "test": "npm run test:syntax && npm run test:pwa && npm run test:unit"
   },
   "devDependencies": {
     "playwright-core": "1.60.0"

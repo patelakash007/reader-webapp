@@ -1,51 +1,19 @@
 'use strict';
 
-import assert from 'node:assert';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 
 console.log('--- Running Reader & TTS Unit and Integration Tests ---');
 
 // ===== 1. Script Syntax & Deprecation Checks =====
-const rootDir = path.resolve(__dirname, '..');
-const moduleFiles = [
-  'app.js',
-  'reader.js',
-  'parser.js',
-  'tts.js',
-  'settings.js',
-  'storage.js',
-  'ui.js',
-  'utils.js'
-];
+const scriptSource = fs.readFileSync(path.join(__dirname, '../script.js'), 'utf8');
 
-function loadModularSources() {
-  const sources = {};
-  for (const file of moduleFiles) {
-    const fullPath = path.join(rootDir, file);
-    if (fs.existsSync(fullPath)) {
-      sources[file] = fs.readFileSync(fullPath, 'utf8');
-    }
-  }
-  const scriptPath = path.join(rootDir, 'script.js');
-  if (fs.existsSync(scriptPath)) {
-    sources['script.js'] = fs.readFileSync(scriptPath, 'utf8');
-  }
-  const combined = Object.values(sources).join('\n');
-  return { sources, combined };
-}
-
-const { sources: moduleSources, combined: scriptSource } = loadModularSources();
-
-assert(!scriptSource.includes('.substr('), 'script.js/modules should not contain deprecated String.prototype.substr calls');
-assert(scriptSource.includes('.slice(2, 11)'), 'reader.js/script.js should use .slice(2, 11) for heading ID generation');
-assert(scriptSource.includes('tokenizeReaderDOM'), 'tts.js/script.js should export or define tokenizeReaderDOM');
-assert(scriptSource.includes('chunkText'), 'tts.js/script.js should define chunkText');
-assert(scriptSource.includes('speechGeneration'), 'tts.js/script.js should include speechGeneration concurrency counter');
+assert(!scriptSource.includes('.substr('), 'script.js should not contain deprecated String.prototype.substr calls');
+assert(scriptSource.includes('.slice(2, 11)'), 'script.js should use .slice(2, 11) for heading ID generation');
+assert(scriptSource.includes('tokenizeReaderDOM'), 'script.js should export or define tokenizeReaderDOM');
+assert(scriptSource.includes('chunkText'), 'script.js should define chunkText');
+assert(scriptSource.includes('speechGeneration'), 'script.js should include speechGeneration concurrency counter');
 console.log('✓ Check 1: Script syntax and deprecation validation passed.');
 
 // ===== 2. Utterance Chunking Algorithm =====
@@ -264,16 +232,6 @@ class MockNode {
       curr = curr.parentNode;
     }
     return null;
-  }
-
-  contains(target) {
-    if (!target) return false;
-    let curr = target;
-    while (curr) {
-      if (curr === this) return true;
-      curr = curr.parentElement || curr.parentNode;
-    }
-    return false;
   }
 
   querySelectorAll(selector) {
@@ -642,13 +600,13 @@ assert.throws(() => enforceLimit('x'.repeat(1_000_001)), /exceeds limit/);
 console.log('✓ Check 8: Multi-format text processing and limit enforcement passed.');
 
 // ===== 9. Preset & Theme Integrity Tests =====
-const lightPresetsMatch = scriptSource.match(/(?:export\s+)?const lightPresets = (\[[\s\S]*?\n\s*\]);/);
-const darkPresetsMatch = scriptSource.match(/(?:export\s+)?const darkPresets = (\[[\s\S]*?\n\s*\]);/);
-const validThemesMatch = scriptSource.match(/(?:export\s+)?const VALID_THEMES = new Set\((\[[\s\S]*?\n\s*\])\);/);
+const lightPresetsMatch = scriptSource.match(/const lightPresets = (\[[\s\S]*?\n\s*\]);/);
+const darkPresetsMatch = scriptSource.match(/const darkPresets = (\[[\s\S]*?\n\s*\]);/);
+const validThemesMatch = scriptSource.match(/const VALID_THEMES = new Set\((\[[\s\S]*?\n\s*\])\);/);
 
-assert(lightPresetsMatch, 'lightPresets array must be defined in settings.js / script.js');
-assert(darkPresetsMatch, 'darkPresets array must be defined in settings.js / script.js');
-assert(validThemesMatch, 'VALID_THEMES set must be defined in settings.js / script.js');
+assert(lightPresetsMatch, 'lightPresets array must be defined in script.js');
+assert(darkPresetsMatch, 'darkPresets array must be defined in script.js');
+assert(validThemesMatch, 'VALID_THEMES set must be defined in script.js');
 
 const lightPresets = eval(lightPresetsMatch[1]);
 const darkPresets = eval(darkPresetsMatch[1]);
