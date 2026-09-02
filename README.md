@@ -27,7 +27,7 @@ https://patelakash007.github.io/reader-webapp/
 - **20 Theme Presets & Typography Engine**: 10 Light and 10 Dark themes, typography sliders (line height, letter spacing, margins), font size presets (S/M/L/XL), and reading ruler guide.
 - **Table of Contents & In-Context Editor**: Modal TOC dialog extracted from document headings, distraction-free Focus mode, and in-place Markdown editing with session persistence.
 - **100% Local-First & Privacy-Focused**: All file extraction, parsing, and speech synthesis execute purely inside the browser without external network telemetry.
-- **Progressive Web App (PWA) Offline Operation**: Standalone installable PWA with Service Worker precaching of all 12 app shell assets and vendor parsers.
+- **Progressive Web App (PWA) Offline Operation**: Standalone installable PWA with Service Worker precaching of the HTML, CSS, compatibility entry, ES modules, local parser bundles, manifest, and icons.
 
 ## Project structure
 
@@ -57,7 +57,19 @@ reader-webapp/
 |-- package-lock.json
 |-- index.html
 |-- style.css
-|-- script.js
+|-- script.js                 # Stable classic compatibility entry
+|-- src/
+|   |-- app.mjs               # Initialization and module wiring
+|   |-- constants.mjs         # Static configuration and presets
+|   |-- context.mjs           # Shared transient application state
+|   |-- dom.mjs               # DOM element collection
+|   |-- parser.mjs             # Markdown and file extraction
+|   |-- reader.mjs             # Rendering and reader controls
+|   |-- settings.mjs           # Themes, presets, and typography
+|   |-- storage.mjs            # Legacy storage cleanup only
+|   |-- tts.mjs                # Speech synthesis and highlighting
+|   |-- ui.mjs                 # Status, dialogs, and UI helpers
+|   `-- utils.mjs              # Shared guards and numeric helpers
 |-- sw.js
 |-- manifest.webmanifest
 |-- README.md
@@ -115,11 +127,7 @@ Run the JavaScript syntax check:
 npm run test:syntax
 ```
 
-This runs:
-
-```bash
-node --check script.js
-```
+This validates the classic `script.js` compatibility entry and every production ES module under `src/`. The service worker precaches the complete local module graph so the app remains available offline after installation.
 
 Run the PWA app-shell validation:
 
@@ -135,7 +143,7 @@ Run the native test suite covering chunking, word tokenization, speech state mac
 npm run test:unit
 ```
 
-This runs `tests/test_reader.js` and validates 100% of core engine logic headless in Node.js.
+This runs `tests/test_reader.js` and `tests/test_tts_controller.js`, validating the core engine and production speech controller headless in Node.js.
 
 ### Full Playwright and Chromium smoke test
 
@@ -250,7 +258,14 @@ Run:
 npm test
 ```
 
-This runs syntax validation, PWA validation, the Playwright smoke test, and the deep Playwright regression test. If Playwright is not available, `npm run test:smoke` clearly reports the skip reason and falls back to the Chromium-only smoke path.
+This runs syntax validation for `script.js` and every `src/*.mjs` module, PWA validation, production-import unit tests, and the empirical stress suite. Browser checks remain explicit:
+
+```bash
+npm run test:smoke
+npm run test:deep
+```
+
+If Playwright is unavailable, `npm run test:smoke` reports the skip reason and falls back to the Chromium-only smoke path.
 
 ### Manual testing checklist
 
