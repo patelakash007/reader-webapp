@@ -76,6 +76,27 @@ async function runPlaywrightSmoke() {
       throw new Error(`Unexpected page title: ${title}`);
     }
 
+    const moduleFiles = [
+      './src/app.mjs', './src/constants.mjs', './src/context.mjs', './src/dom.mjs',
+      './src/parser.mjs', './src/reader.mjs', './src/settings.mjs', './src/storage.mjs',
+      './src/tts.mjs', './src/ui.mjs', './src/utils.mjs'
+    ];
+    const moduleRequests = await page.evaluate(async files => {
+      const responses = await Promise.all(files.map(async file => {
+        const response = await fetch(file, { cache: 'no-store' });
+        return { file, status: response.status };
+      }));
+      const resourceNames = new Set(performance.getEntriesByType('resource').map(entry => entry.name));
+      return responses.map(result => ({
+        ...result,
+        requested: resourceNames.has(new URL(result.file, location.href).href)
+      }));
+    }, moduleFiles);
+    const failedModules = moduleRequests.filter(module => module.status !== 200 || !module.requested);
+    if (failedModules.length > 0) {
+      throw new Error(`ES module requests failed: ${JSON.stringify(failedModules)}`);
+    }
+
     await page.screenshot({ path: path.join(outputDir, 'playwright-desktop.png'), fullPage: true });
 
     if (await page.locator('#pasteArea').count() && await page.locator('#readBtn').count()) {

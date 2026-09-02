@@ -132,6 +132,16 @@ async function runDeepPlaywrightChecks() {
     const title = await page.title();
     await page.waitForSelector('#app');
     assert(/Reader Webapp/i.test(title), `Unexpected page title: ${title}`);
+    const moduleFiles = [
+      './src/app.mjs', './src/constants.mjs', './src/context.mjs', './src/dom.mjs',
+      './src/parser.mjs', './src/reader.mjs', './src/settings.mjs', './src/storage.mjs',
+      './src/tts.mjs', './src/ui.mjs', './src/utils.mjs'
+    ];
+    const moduleStatuses = await page.evaluate(async files => Promise.all(files.map(async file => {
+      const response = await fetch(file, { cache: 'no-store' });
+      return { file, status: response.status };
+    })), moduleFiles);
+    assert(moduleStatuses.every(module => module.status === 200), `ES module asset check failed: ${JSON.stringify(moduleStatuses)}`);
     screenshots.push(path.join(outputDir, 'deep-initial.png'));
     await page.screenshot({ path: screenshots[screenshots.length - 1], fullPage: false });
     results.push('Initial app shell loaded.');
