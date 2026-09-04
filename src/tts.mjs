@@ -516,6 +516,7 @@ export function createTTS(context, { ui }) {
 
   function stopTTS() {
     if (session.finishing) return;
+    const wasActive = session.state !== STATE_IDLE;
     session.finishing = true;
     session.speechGeneration += 1;
     session.visibilityInterrupted = false;
@@ -527,9 +528,13 @@ export function createTTS(context, { ui }) {
     }
     session.currentUtterance = null;
     clearHighlight();
-    setState(STATE_IDLE);
+    if (wasActive) {
+      setState(STATE_IDLE);
+    }
     session.finishing = false;
-    ui.announceLive('Text-to-speech stopped.');
+    if (wasActive) {
+      ui.announceLive('Text-to-speech stopped.');
+    }
   }
 
   function toggleTTS() {

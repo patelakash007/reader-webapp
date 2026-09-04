@@ -125,6 +125,43 @@ function classList() {
   mobile.controller.stopTTS();
   assert.strictEqual(mobile.session.state, 'idle');
 
+  // Test idle invalidateTokenization vs active stopTTS announcements (F-04)
+  const announcements = [];
+  const announcementContext = createAppContext({
+    readerContent: { querySelectorAll: () => [], contains: () => true },
+    voiceRateInput: { value: '1.0' }
+  });
+  announcementContext.runtime.tts.supported = true;
+  announcementContext.runtime.tts.synth = new FakeSynth();
+  announcementContext.runtime.tts.wordSpans = [];
+  announcementContext.runtime.tts.wordMeta = [{ index: 0, text: 'Hello', start: 0, end: 5 }];
+  announcementContext.runtime.tts.fullSpokenText = 'Hello';
+  const announcementUI = { showStatus() {}, announceLive(msg) { announcements.push(msg); } };
+  const announcementController = createTTS(announcementContext, { ui: announcementUI });
+
+  // While idle, invalidateTokenization must NOT announce
+  announcementController.invalidateTokenization();
+  assert.strictEqual(announcements.length, 0, `Expected 0 announcements while idle, got: ${announcements.length}`);
+
+  // Re-populate tokens for speech test
+  announcementContext.runtime.tts.wordSpans = [
+    { classList: classList(), scrollIntoView() {} }
+  ];
+  announcementContext.runtime.tts.wordMeta = [{ index: 0, text: 'Hello', start: 0, end: 5 }];
+  announcementContext.runtime.tts.fullSpokenText = 'Hello';
+
+  // When speech starts and then stopTTS is called, it must announce exactly once
+  announcementController.startSpeech(0);
+  assert.strictEqual(announcements.filter(a => a === 'Text-to-speech started.').length, 1);
+  announcementController.stopTTS();
+  const stopAnnouncements = announcements.filter(a => a === 'Text-to-speech stopped.');
+  assert.strictEqual(stopAnnouncements.length, 1, `Expected exactly 1 stop announcement, got: ${stopAnnouncements.length}`);
+
+  // Second stopTTS while already idle must NOT announce again
+  announcementController.stopTTS();
+  const secondStopCount = announcements.filter(a => a === 'Text-to-speech stopped.').length;
+  assert.strictEqual(secondStopCount, 1, 'Second stopTTS while idle should not announce');
+
   console.log('Production TTS controller state-machine tests passed.');
 })().catch(error => {
   console.error(error);
