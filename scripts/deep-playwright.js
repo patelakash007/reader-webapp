@@ -313,16 +313,24 @@ async function runDeepPlaywrightChecks() {
 
     await expandSettingsSection(page, 'tools');
     await page.click('#editBtn');
-    await page.waitForFunction(() => document.querySelector('#readerContent')?.getAttribute('contenteditable') === 'true');
-    await page.locator('#readerContent').fill('## Edited Heading\n\nEdited body with **bold** text.');
+    await page.waitForSelector('#readerEditor:not([hidden])');
+    assert(await page.isHidden('#readerContent'), 'Reader content must be hidden in edit mode');
+    assert(await page.isVisible('#readerEditor'), 'Reader editor must be visible in edit mode');
+    await page.click('#cancelEditBannerBtn');
+    assert(await page.isVisible('#readerContent'), 'Reader content must be visible after cancel');
+    assert(await page.isHidden('#readerEditor'), 'Reader editor must be hidden after cancel');
+    await page.click('#editBtn');
+    assert(await page.isHidden('#readerContent'), 'Reader content must be hidden in edit mode');
+    assert(await page.isVisible('#readerEditor'), 'Reader editor must be visible in edit mode');
+    await page.locator('#readerEditor').fill('## Edited Heading\n\nEdited body with **bold** text.');
     await page.click('#saveEditBannerBtn');
     await page.waitForFunction(() => document.querySelector('#readerContent h2')?.textContent.includes('Edited Heading'));
+    assert(await page.isVisible('#readerContent'), 'Reader content must be visible after save');
+    assert(await page.isHidden('#readerEditor'), 'Reader editor must be hidden after save');
     const editState = await page.evaluate(() => ({
-      editable: document.querySelector('#readerContent').hasAttribute('contenteditable'),
       currentText: document.querySelector('#readerContent')?.textContent || '',
       bannerVisible: document.querySelector('#editingBanner')?.classList.contains('show')
     }));
-    assert(editState.editable === false, 'Reader content stayed editable after save.');
     assert(editState.currentText.includes('Edited body with bold text.'), 'Edited markdown was not re-rendered.');
     assert(editState.bannerVisible === false, 'Editing banner stayed visible after save.');
     results.push('Edit and save flow passed.');
