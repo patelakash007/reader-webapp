@@ -49,6 +49,7 @@ export function createAppContext(els) {
       },
       tts: {
         voices: [],
+        voicesSignature: '',
         wordMeta: [],
         wordSpans: [],
         fullSpokenText: '',

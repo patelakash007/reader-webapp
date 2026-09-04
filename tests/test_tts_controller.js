@@ -57,7 +57,13 @@ function classList() {
 
 (async () => {
   global.SpeechSynthesisUtterance = FakeUtterance;
-  global.document = { hidden: false, addEventListener() {} };
+  global.document = {
+    hidden: false,
+    addEventListener() {},
+    createElement() {
+      return { value: '', textContent: '', selected: false, dataset: {} };
+    }
+  };
   const { createAppContext } = await import('../src/context.mjs');
   const { createTTS } = await import('../src/tts.mjs');
 
@@ -176,6 +182,58 @@ function classList() {
   announcementController.stopTTS();
   const secondStopCount = announcements.filter(a => a === 'Text-to-speech stopped.').length;
   assert.strictEqual(secondStopCount, 1, 'Second stopTTS while idle should not announce');
+
+  // Test voice select churn prevention (F-11)
+  let innerHtmlAssignCount = 0;
+  const mockVoiceSelect = {
+    value: '',
+    _innerHTML: '',
+    set innerHTML(val) {
+      innerHtmlAssignCount++;
+      this._innerHTML = val;
+    },
+    get innerHTML() {
+      return this._innerHTML;
+    },
+    appendChild() {}
+  };
+  const voiceSynth = new FakeSynth();
+  const testVoices = [
+    { name: 'Alex', lang: 'en-US', voiceURI: 'alex-uri', default: true },
+    { name: 'Samantha', lang: 'en-US', voiceURI: 'samantha-uri', default: false }
+  ];
+  voiceSynth.getVoices = () => testVoices;
+
+  const voiceContext = createAppContext({
+    voiceSelect: mockVoiceSelect,
+    voiceRateInput: { value: '1.0' }
+  });
+  voiceContext.runtime.tts.supported = true;
+  voiceContext.runtime.tts.synth = voiceSynth;
+  const voiceController = createTTS(voiceContext, { ui: { showStatus() {}, announceLive() {} } });
+
+  // First call populates options and sets innerHTML
+  voiceController.populateVoices();
+  assert.strictEqual(innerHtmlAssignCount, 1, `Expected innerHTML assigned once on first populate, got ${innerHtmlAssignCount}`);
+  assert.strictEqual(voiceContext.runtime.tts.voices.length, 2);
+
+  // Second call with identical voices must NOT re-render options (signature match)
+  voiceController.populateVoices();
+  assert.strictEqual(innerHtmlAssignCount, 1, `Expected innerHTML NOT reassigned when voice signature matches, got ${innerHtmlAssignCount}`);
+
+  // When voices actually change, innerHTML is reassigned
+  voiceSynth.getVoices = () => [
+    ...testVoices,
+    { name: 'Victoria', lang: 'en-US', voiceURI: 'victoria-uri', default: false }
+  ];
+  voiceController.populateVoices();
+  assert.strictEqual(innerHtmlAssignCount, 2, `Expected innerHTML reassigned when voices change, got ${innerHtmlAssignCount}`);
+  assert.strictEqual(voiceContext.runtime.tts.voices.length, 3);
+
+  // onvoiceschanged detachment check
+  voiceSynth.onvoiceschanged = () => {};
+  voiceController.initializeVoices();
+  assert.strictEqual(voiceSynth.onvoiceschanged, null, 'Expected onvoiceschanged to be detached once voices are populated');
 
   console.log('Production TTS controller state-machine tests passed.');
 })().catch(error => {

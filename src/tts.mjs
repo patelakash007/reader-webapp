@@ -327,7 +327,11 @@ export function createTTS(context, { ui }) {
     if (!session.supported || !els.voiceSelect) return;
     const list = session.synth.getVoices();
     if (!list || !list.length) return;
-    session.voices = deduplicateAndSortVoices(Array.from(list));
+    const sorted = deduplicateAndSortVoices(Array.from(list));
+    const signature = sorted.map(v => `${v.voiceURI || v.name}|${v.lang}`).join(';');
+    if (signature && signature === session.voicesSignature) return;
+    session.voicesSignature = signature;
+    session.voices = sorted;
     const previousSelection = els.voiceSelect.value || '';
     els.voiceSelect.innerHTML = '';
     session.voices.forEach((voice, index) => {
@@ -348,7 +352,12 @@ export function createTTS(context, { ui }) {
     const intervalId = setInterval(() => {
       elapsed += VOICE_POLL_MS;
       populateVoices();
-      if (session.voices.length || elapsed >= VOICE_POLL_TIMEOUT) clearInterval(intervalId);
+      if (session.voices.length || elapsed >= VOICE_POLL_TIMEOUT) {
+        clearInterval(intervalId);
+        if (session.voices.length && session.synth && 'onvoiceschanged' in session.synth) {
+          session.synth.onvoiceschanged = null;
+        }
+      }
     }, VOICE_POLL_MS);
   }
 
@@ -698,8 +707,19 @@ export function createTTS(context, { ui }) {
   function initializeVoices() {
     if (!session.supported || !session.synth) return;
     populateVoices();
-    if ('onvoiceschanged' in session.synth) session.synth.onvoiceschanged = populateVoices;
-    pollVoices();
+    if (session.voices.length) {
+      if ('onvoiceschanged' in session.synth) session.synth.onvoiceschanged = null;
+    } else {
+      if ('onvoiceschanged' in session.synth) {
+        session.synth.onvoiceschanged = () => {
+          populateVoices();
+          if (session.voices.length && 'onvoiceschanged' in session.synth) {
+            session.synth.onvoiceschanged = null;
+          }
+        };
+      }
+      pollVoices();
+    }
   }
 
   return {
