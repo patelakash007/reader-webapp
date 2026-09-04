@@ -19,6 +19,7 @@ const APP_SHELL = [
   './src/ui.mjs',
   './src/utils.mjs',
   './src/experience.mjs',
+  './src/typography.mjs',
   './manifest.webmanifest',
   './vendor/marked.esm.mjs',
   './vendor/pdf.min.mjs',
@@ -43,12 +44,8 @@ function getRequestUrl(request) {
   url.hash = '';
   const withoutSearch = new URL(url.href);
   withoutSearch.search = '';
-  if (withoutSearch.href === ROOT_URL_WITHOUT_TRAILING_SLASH || withoutSearch.href === ROOT_URL) {
-    return ROOT_URL;
-  }
-  if (withoutSearch.href === INDEX_URL) {
-    return INDEX_URL;
-  }
+  if (withoutSearch.href === ROOT_URL_WITHOUT_TRAILING_SLASH || withoutSearch.href === ROOT_URL) return ROOT_URL;
+  if (withoutSearch.href === INDEX_URL) return INDEX_URL;
   if (url.href === ROOT_URL_WITHOUT_TRAILING_SLASH) return ROOT_URL;
   return url.href;
 }
@@ -67,9 +64,7 @@ function isCanonicalNavigation(request) {
 
 function safeCachePut(cache, request, response) {
   try {
-    return cache.put(request, response).catch(err => {
-      console.warn('Service worker cache write failed.', err);
-    });
+    return cache.put(request, response).catch(err => console.warn('Service worker cache write failed.', err));
   } catch (err) {
     console.warn('Service worker cache write failed.', err);
     return Promise.resolve();
@@ -78,36 +73,23 @@ function safeCachePut(cache, request, response) {
 
 async function cacheCanonicalNavigation(cache, request, response) {
   if (!response || !response.ok || !isCanonicalNavigation(request)) return;
-
   const requestUrl = getRequestUrl(request);
   const cacheWrites = [safeCachePut(cache, requestUrl, response.clone())];
-
-  if (requestUrl === ROOT_URL) {
-    cacheWrites.push(safeCachePut(cache, INDEX_URL, response.clone()));
-  } else if (requestUrl === INDEX_URL) {
-    cacheWrites.push(safeCachePut(cache, ROOT_URL, response.clone()));
-  }
-
+  if (requestUrl === ROOT_URL) cacheWrites.push(safeCachePut(cache, INDEX_URL, response.clone()));
+  else if (requestUrl === INDEX_URL) cacheWrites.push(safeCachePut(cache, ROOT_URL, response.clone()));
   await Promise.all(cacheWrites);
 }
 
 async function navigationResponse(request, event) {
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin || !url.href.startsWith(self.registration.scope)) {
-    return fetch(request);
-  }
-
+  if (url.origin !== self.location.origin || !url.href.startsWith(self.registration.scope)) return fetch(request);
   const cache = await caches.open(CACHE_NAME);
-
   try {
     const fetchPromise = fetch(request);
-    event.waitUntil(fetchPromise
-      .then(response => cacheCanonicalNavigation(cache, request, response))
-      .catch(() => undefined));
+    event.waitUntil(fetchPromise.then(response => cacheCanonicalNavigation(cache, request, response)).catch(() => undefined));
     return await fetchPromise;
   } catch (err) {
-    const cachedShell = await cache.match(INDEX_URL) || await cache.match(ROOT_URL);
-    return cachedShell || Response.error();
+    return (await cache.match(INDEX_URL)) || (await cache.match(ROOT_URL)) || Response.error();
   }
 }
 
@@ -115,21 +97,10 @@ async function staleWhileRevalidate(request, event) {
   const cache = await caches.open(CACHE_NAME);
   const cached = await cache.match(request);
   const fetchPromise = fetch(request, { cache: 'no-cache' });
-
   event.waitUntil(fetchPromise
-    .then(response => {
-      if (response && response.ok && isCanonicalAppShellRequest(request)) {
-        return safeCachePut(cache, request, response.clone());
-      }
-      return undefined;
-    })
+    .then(response => response && response.ok && isCanonicalAppShellRequest(request) ? safeCachePut(cache, request, response.clone()) : undefined)
     .catch(() => undefined));
-
-  if (cached) {
-    event.waitUntil(fetchPromise.catch(() => undefined));
-    return cached;
-  }
-
+  if (cached) return cached;
   return fetchPromise;
 }
 
@@ -145,25 +116,17 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys
-      .filter(key => key !== CACHE_NAME)
-      .map(key => caches.delete(key)));
+    await Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)));
     await self.clients.claim();
   })());
 });
 
 self.addEventListener('fetch', event => {
   const { request } = event;
-
   if (request.mode === 'navigate') {
     const url = new URL(request.url);
-    if (url.origin === self.location.origin && url.href.startsWith(self.registration.scope)) {
-      event.respondWith(navigationResponse(request, event));
-    }
+    if (url.origin === self.location.origin && url.href.startsWith(self.registration.scope)) event.respondWith(navigationResponse(request, event));
     return;
   }
-
-  if (isCanonicalAppShellRequest(request)) {
-    event.respondWith(staleWhileRevalidate(request, event));
-  }
+  if (isCanonicalAppShellRequest(request)) event.respondWith(staleWhileRevalidate(request, event));
 });
