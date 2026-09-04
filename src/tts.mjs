@@ -624,9 +624,7 @@ export function createTTS(context, { ui }) {
 
   function cycleVoiceSpeed() {
     const current = parseFloat(els.voiceRateInput ? els.voiceRateInput.value : '1.0') || 1.0;
-    let nextIndex = SPEED_STEPS.findIndex(speed => Math.abs(speed - current) < 0.05) + 1;
-    if (nextIndex >= SPEED_STEPS.length || nextIndex === 0) nextIndex = 0;
-    const nextSpeed = SPEED_STEPS[nextIndex];
+    const nextSpeed = SPEED_STEPS.find(s => s > current + 0.049) ?? SPEED_STEPS[0];
     if (els.voiceRateInput) els.voiceRateInput.value = nextSpeed;
     if (els.voiceRateVal) els.voiceRateVal.textContent = `${nextSpeed.toFixed(1)}x`;
     if (els.audioSpeedBtn) els.audioSpeedBtn.textContent = `${nextSpeed.toFixed(1)}x`;

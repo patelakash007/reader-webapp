@@ -235,6 +235,37 @@ function classList() {
   voiceController.initializeVoices();
   assert.strictEqual(voiceSynth.onvoiceschanged, null, 'Expected onvoiceschanged to be detached once voices are populated');
 
+  // Test voice speed cycling (F-12)
+  const speedRateInput = { value: '1.0' };
+  const speedRateVal = { textContent: '1.0x' };
+  const speedBtn = { textContent: '1.0x' };
+  const speedContext = createAppContext({
+    voiceRateInput: speedRateInput,
+    voiceRateVal: speedRateVal,
+    audioSpeedBtn: speedBtn
+  });
+  const speedController = createTTS(speedContext, { ui: { showStatus() {}, announceLive() {} } });
+
+  // Test current: 0.9 -> should advance to 1.0
+  speedRateInput.value = '0.9';
+  speedController.cycleVoiceSpeed();
+  assert.strictEqual(speedRateInput.value, 1.0, `Expected 0.9 to advance to 1.0, got ${speedRateInput.value}`);
+
+  // Test current: 1.2 -> should advance to 1.5
+  speedRateInput.value = '1.2';
+  speedController.cycleVoiceSpeed();
+  assert.strictEqual(speedRateInput.value, 1.5, `Expected 1.2 to advance to 1.5, got ${speedRateInput.value}`);
+
+  // Test current: 2.0 (maximum) -> should wrap around to 0.8
+  speedRateInput.value = '2.0';
+  speedController.cycleVoiceSpeed();
+  assert.strictEqual(speedRateInput.value, 0.8, `Expected 2.0 to wrap around to 0.8, got ${speedRateInput.value}`);
+
+  // Test current: 2.4 (beyond maximum) -> should wrap around to 0.8
+  speedRateInput.value = '2.4';
+  speedController.cycleVoiceSpeed();
+  assert.strictEqual(speedRateInput.value, 0.8, `Expected 2.4 to wrap around to 0.8, got ${speedRateInput.value}`);
+
   console.log('Production TTS controller state-machine tests passed.');
 })().catch(error => {
   console.error(error);
