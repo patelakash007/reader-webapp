@@ -56,11 +56,12 @@ export function normalizeSafeLinkHref(escapedUrl) {
 
 export function isSmartHeading(trimmed) {
   if (typeof trimmed !== 'string' || trimmed.length < 3 || trimmed.length > 55) return false;
-  if (!/^[A-Z][A-Z0-9\s:—–-]{2,55}[A-Z0-9]$/.test(trimmed)) return false;
-  if (/^[A-Z0-9]{2,6}(?:\s+(?:AND|OR|&|\/)\s+[A-Z0-9]{2,6})+$/i.test(trimmed)) return false;
+  if (/[\r\n]/.test(trimmed)) return false;
+  if (!/^[A-Z][A-Z0-9 \t:—–-]{2,55}[A-Z0-9]$/.test(trimmed)) return false;
+  if (/^[A-Z0-9]{2,6}(?:[ \t]+(?:AND|OR|&|\/)[ \t]+[A-Z0-9]{2,6})+$/i.test(trimmed)) return false;
   if (/[.!?]$/.test(trimmed)) return false;
   if (/^(?:PLEASE|NOTE|WARNING|CAUTION|DO NOT|NOTICE)\b/i.test(trimmed)) return false;
-  const words = trimmed.split(/\s+/);
+  const words = trimmed.split(/[ \t]+/);
   return words.some(w => w.length >= 4) || words.length >= 2;
 }
 

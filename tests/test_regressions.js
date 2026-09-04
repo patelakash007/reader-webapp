@@ -679,6 +679,19 @@ const path = require('node:path');
   assert.strictEqual(lastStatusType, 'error');
   console.log('✓ Editor save safely handles empty content and enforces character limits.');
 
+  console.log('\n--- 26. Markdown: Multi-line ALL-CAPS paragraph does not collapse into single heading with newline (F-08) ---');
+  const multiLineAllCaps = 'CHAPTER ONE\nTHE BEGINNING';
+  const multiLineHtml = parser.parseMarkdownToHtml(multiLineAllCaps, true);
+  assert(!multiLineHtml.includes('\n</h2>') && !multiLineHtml.includes('<h2 id="heading-0">CHAPTER ONE\nTHE BEGINNING</h2>'), 'Multi-line shouted paragraph should not become a single heading with a newline');
+  assert(!multiLineHtml.match(/<h[1-6][^>]*>[^<]*\n[^<]*<\/h[1-6]>/), 'Headings must never contain raw newlines');
+  assert(multiLineHtml.includes('<p>') && multiLineHtml.includes('CHAPTER ONE') && multiLineHtml.includes('THE BEGINNING'), 'Multi-line text should remain in a paragraph');
+
+  const separateHeadings = 'CHAPTER ONE\n\nTHE BEGINNING';
+  const separateHtml = parser.parseMarkdownToHtml(separateHeadings, true);
+  const h2Count = (separateHtml.match(/<h2/g) || []).length;
+  assert.strictEqual(h2Count, 2, `Expected 2 headings when separated by blank lines, got ${h2Count}: ${separateHtml}`);
+  console.log('✓ Multi-line ALL-CAPS paragraph renders in <p> without collapsed raw newline heading.');
+
   console.log('\n====================================================');
   console.log('ALL REGRESSION TESTS PASSED SUCCESSFULLY');
   console.log('====================================================\n');
