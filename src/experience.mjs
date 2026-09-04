@@ -151,6 +151,9 @@ function wirePrimaryControls(api) {
   if (!button || !toolbar) return;
 
   const isCompact = () => window.matchMedia?.('(max-width: 760px)').matches;
+  const isToolbarVisible = () => isCompact()
+    ? toolbar.classList.contains('expanded')
+    : (!toolbar.classList.contains('hidden-bar') && !toolbar.classList.contains('force-hidden'));
   const updateLabel = expanded => {
     button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
     button.setAttribute('aria-label', expanded ? 'Hide Reading Controls' : 'Show Reading Controls');
@@ -161,11 +164,14 @@ function wirePrimaryControls(api) {
   button.addEventListener('click', event => {
     event.preventDefault();
     event.stopImmediatePropagation();
-    const expanded = isCompact() ? toolbar.classList.contains('expanded') : !toolbar.classList.contains('hidden-bar');
+    const expanded = isToolbarVisible();
     if (isCompact()) {
       if (expanded) api.reader.collapseMobileSheet();
       else api.reader.expandMobileSheet();
       updateLabel(!expanded);
+    } else if (toolbar.classList.contains('force-hidden')) {
+      api.reader.toggleFocus();
+      updateLabel(true);
     } else {
       if (expanded) {
         toolbar.classList.add('hidden-bar');
@@ -177,11 +183,10 @@ function wirePrimaryControls(api) {
     }
   }, true);
 
-  updateLabel(false);
+  updateLabel(isToolbarVisible());
 
   const syncVisibility = () => {
-    const expanded = isCompact() ? toolbar.classList.contains('expanded') : !toolbar.classList.contains('hidden-bar');
-    if (!expanded || document.activeElement === button) updateLabel(expanded);
+    updateLabel(isToolbarVisible());
   };
   const observer = new MutationObserver(syncVisibility);
   observer.observe(toolbar, { attributes: true, attributeFilter: ['class'] });
@@ -207,9 +212,7 @@ function wirePresetSystem(context, api) {
   sync();
 
   api.els.settingsDrawer?.addEventListener('click', event => {
-    if (event.target.closest('.preset-arrow, .mode-btn, .preset-card, .preset-dot')) {
-      requestAnimationFrame(sync);
-    }
+    if (event.target.closest('.preset-arrow, .mode-btn, .preset-card, .preset-dot')) requestAnimationFrame(sync);
   });
 }
 
@@ -240,13 +243,10 @@ function wireLocalPersistence(context, api) {
 }
 
 function wireNetworkStatus(api) {
-  const targets = [api.els.statusMessage, api.els.readerStatusMessage].filter(Boolean);
   const update = () => {
     const offline = navigator.onLine === false;
     document.body.classList.toggle('is-offline', offline);
-    if (offline) {
-      api.ui.showStatus('Offline mode · files and preferences remain on this device.', 'info');
-    }
+    if (offline) api.ui.showStatus('Offline mode · files and preferences remain on this device.', 'info');
   };
   window.addEventListener('online', update, { passive: true });
   window.addEventListener('offline', update, { passive: true });
