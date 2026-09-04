@@ -136,7 +136,9 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
   function updateRulerPosition(event) {
     if (!runtime.reader.isRulerActive || !els.readingRuler || !els.readerContent || rulerFramePending) return;
     const target = getElementTarget(event.target);
-    const pageY = event.pageY || (event.touches && event.touches[0] ? event.touches[0].pageY : null);
+    const pageY = typeof event.pageY === 'number'
+      ? event.pageY
+      : (event.touches && event.touches[0] && typeof event.touches[0].pageY === 'number' ? event.touches[0].pageY : null);
     rulerFramePending = true;
 
     const executeUpdate = () => {
@@ -154,7 +156,7 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
         const top = lastRulerRect.top + scrollTop;
         els.readingRuler.style.height = `${lastRulerRect.height + 4}px`;
         els.readingRuler.style.transform = `translate3d(0, ${top - 2}px, 0)`;
-      } else if (pageY) {
+      } else if (typeof pageY === 'number') {
         lastRulerTarget = null;
         lastRulerRect = null;
         const y = pageY - 14;
@@ -884,6 +886,7 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     toggleMobileSheet,
     updateEditingLayoutOffset,
     updateMarginOnResize,
+    updateRulerPosition,
     updateWordCount
   };
 }

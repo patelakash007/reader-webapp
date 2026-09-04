@@ -36,7 +36,8 @@ export function getElementTarget(target) {
 }
 
 export function getScrollTop() {
-  return window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+  if (typeof window === 'undefined') return 0;
+  return window.pageYOffset || (typeof document !== 'undefined' && (document.documentElement?.scrollTop || document.body?.scrollTop)) || 0;
 }
 
 export function isMobileDevice() {

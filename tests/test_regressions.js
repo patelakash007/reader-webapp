@@ -905,6 +905,36 @@ const path = require('node:path');
   Object.defineProperty(global.navigator, 'userAgent', { value: origUserAgent, configurable: true, writable: true });
   console.log('✓ Desktop mouse drag preset handler safely guarded against accidental theme switching.');
 
+  console.log('\n--- 32. Reader: Ruler pageY === 0 coordinate handling (F-21) ---');
+  const rulerEl = {
+    style: {
+      height: '',
+      transform: ''
+    }
+  };
+  const readerContentEl = {
+    contains: () => false
+  };
+  const rulerContext = createAppContext({
+    readingRuler: rulerEl,
+    readerContent: readerContentEl
+  });
+  rulerContext.runtime.reader.isRulerActive = true;
+  const rulerReader = createReader(rulerContext, {
+    ui: mockUI
+  });
+
+  // Call with pageY: 0 (top of viewport/document)
+  rulerReader.updateRulerPosition({ target: null, pageY: 0 });
+  assert.strictEqual(rulerEl.style.height, '28px', 'Ruler height should be 28px for cursor/touch coordinate mode');
+  assert.strictEqual(rulerEl.style.transform, 'translate3d(0, -14px, 0)', 'Ruler transform should be calculated properly when pageY === 0');
+
+  // Call with touch event at pageY: 0
+  rulerEl.style.transform = '';
+  rulerReader.updateRulerPosition({ target: null, touches: [{ pageY: 0 }] });
+  assert.strictEqual(rulerEl.style.transform, 'translate3d(0, -14px, 0)', 'Ruler transform should be calculated properly for touch with pageY === 0');
+  console.log('✓ Reading ruler correctly positions at pageY === 0 without ignoring falsy zero coordinate.');
+
   console.log('\n====================================================');
   console.log('ALL REGRESSION TESTS PASSED SUCCESSFULLY');
   console.log('====================================================\n');
