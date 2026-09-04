@@ -391,7 +391,7 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     if (!els.editingBanner || !els.editBtn) return;
     runtime.reader.activeRenderId += 1;
     ui.hideLoader();
-    if (tts.getSession().isSpeaking) tts.stopTTS();
+    if (tts && typeof tts.stopTTS === 'function') tts.stopTTS();
     if (runtime.autoScroll.active) toggleAutoScroll();
     state.isEditing = true;
     if (typeof window !== 'undefined' && window.clearTimeout) {

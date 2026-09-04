@@ -51,8 +51,9 @@ export function init(documentObject = document) {
   });
   context.onSmartHeadingsChanged = () => {
     if (!context.state.currentText || !els.readerView || !els.readerView.classList.contains('active') || context.state.isEditing) return;
-    if (tts && typeof tts.invalidateTokenization === 'function') tts.invalidateTokenization();
-    else if (tts.getSession().isSpeaking) tts.stopTTS();
+    if (tts && typeof tts.invalidateTokenization === 'function') {
+      tts.invalidateTokenization();
+    }
     const currentScroll = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
     reader.renderTextAsync(context.state.currentText, () => {
       reader.scheduleWordCountUpdate();
