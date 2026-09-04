@@ -109,13 +109,22 @@ export function createMarkedInstance() {
 
 const defaultMarkedInstance = createMarkedInstance();
 
+function countNewlines(str) {
+  if (!str) return 0;
+  let count = 0;
+  for (let i = 0; i < str.length; i++) {
+    if (str.charCodeAt(i) === 10) count++;
+  }
+  return count;
+}
+
 export function parseInline(text) {
   if (!text) return '';
   return defaultMarkedInstance.parseInline(String(text));
 }
 
 export function createMarkdownRenderer(smartHeadings = true) {
-  const marked = createMarkedInstance();
+  const marked = defaultMarkedInstance;
 
   function tokenize(text) {
     const tokens = marked.lexer(String(text || ''));
@@ -141,12 +150,11 @@ export function createMarkdownRenderer(smartHeadings = true) {
       for (const token of list) {
         const line = baseLine !== undefined ? baseLine : currentLine;
         if (baseLine === undefined && token.raw) {
-          currentLine += (token.raw.match(/\n/g) || []).length;
+          currentLine += countNewlines(token.raw);
         }
 
         if (smartHeadings && token.type === 'paragraph' && baseLine === undefined) {
-          const trimmed = token.text ? token.text.trim() : '';
-          if (!token.text.includes('\n') && !token.text.includes('\r') && isSmartHeading(trimmed)) {
+          if (token.text && !token.text.includes('\n') && !token.text.includes('\r') && isSmartHeading(token.text.trim())) {
             token.type = 'heading';
             token.depth = 2;
           }

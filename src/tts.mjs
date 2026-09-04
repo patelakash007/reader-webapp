@@ -219,7 +219,9 @@ export function createTTS(context, { ui }) {
     let best = -1;
     while (low <= high) {
       const mid = (low + high) >> 1;
-      if (meta[mid].start <= absIndex) {
+      const m = meta[mid];
+      if (m.start <= absIndex) {
+        if (absIndex < m.end) return mid;
         best = mid;
         low = mid + 1;
       } else {

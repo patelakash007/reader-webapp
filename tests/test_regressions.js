@@ -11,6 +11,7 @@ const path = require('node:path');
   const uiModule = await import('../src/ui.mjs');
   const { createAppContext } = await import('../src/context.mjs');
   const { createReader } = await import('../src/reader.mjs');
+  const { createSettings } = await import('../src/settings.mjs');
 
   console.log('====================================================');
   console.log('RUNNING REGRESSION TEST SUITE');
@@ -855,6 +856,54 @@ const path = require('node:path');
   // 6. Empty buffer
   assert.strictEqual(parser.decodeTextBuffer(new Uint8Array(0)), '');
   console.log('✓ Text encoding detection handles UTF-8, BOMs (UTF-8, UTF-16LE, UTF-16BE), and Windows-1252 fallback.');
+
+  console.log('\n--- 31. Settings: Desktop mouse drag theme guard (F-20) ---');
+  const registeredEvents = [];
+  const gestureEl = {
+    addEventListener(evt) {
+      registeredEvents.push(evt);
+    },
+    removeEventListener() {}
+  };
+  const origTouchPoints = global.navigator?.maxTouchPoints;
+  const origUserAgent = global.navigator?.userAgent;
+  Object.defineProperty(global.navigator, 'maxTouchPoints', { value: 0, configurable: true, writable: true });
+  Object.defineProperty(global.navigator, 'userAgent', { value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', configurable: true, writable: true });
+  global.window = {
+    addEventListener() {},
+    removeEventListener() {}
+  };
+
+  const desktopSettingsContext = createAppContext({
+    presetTrack: { classList: { toggle() {} } },
+    lineHeightInput: { value: '1.85' },
+    letterSpacingInput: { value: '0' },
+    readerView: gestureEl
+  });
+  const desktopSettings = createSettings(desktopSettingsContext, {
+    ui: mockUI,
+    onResetToolbarTimer() {},
+    isMobileSheetLayout: () => false
+  });
+  desktopSettings.attachGestureArea(gestureEl);
+
+  assert(!registeredEvents.includes('mousedown'), 'Desktop should not attach mousedown listener for preset gesture');
+  assert(!registeredEvents.includes('mouseup'), 'Desktop should not attach mouseup listener for preset gesture');
+  assert(registeredEvents.includes('touchstart'), 'Touch listener should still be attached');
+
+  // When mobile device is simulated
+  registeredEvents.length = 0;
+  Object.defineProperty(global.navigator, 'maxTouchPoints', { value: 5, configurable: true, writable: true });
+  const mobileSettings = createSettings(desktopSettingsContext, {
+    ui: mockUI,
+    onResetToolbarTimer() {},
+    isMobileSheetLayout: () => true
+  });
+  mobileSettings.attachGestureArea(gestureEl);
+  assert(registeredEvents.includes('mousedown'), 'Mobile should attach mousedown listener for preset gesture');
+  Object.defineProperty(global.navigator, 'maxTouchPoints', { value: origTouchPoints, configurable: true, writable: true });
+  Object.defineProperty(global.navigator, 'userAgent', { value: origUserAgent, configurable: true, writable: true });
+  console.log('✓ Desktop mouse drag preset handler safely guarded against accidental theme switching.');
 
   console.log('\n====================================================');
   console.log('ALL REGRESSION TESTS PASSED SUCCESSFULLY');
