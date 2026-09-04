@@ -519,7 +519,11 @@ const path = require('node:path');
       }
       readAsArrayBuffer(file) {
         setTimeout(() => {
-          if (this.onload) this.onload({ target: { result: file._buffer || new ArrayBuffer(0) } });
+          let buf = file._buffer;
+          if (!buf && typeof file._content === 'string') {
+            buf = new TextEncoder().encode(file._content).buffer;
+          }
+          if (this.onload) this.onload({ target: { result: buf || new ArrayBuffer(0) } });
         }, 0);
       }
     };
@@ -826,6 +830,31 @@ const path = require('node:path');
   assert.strictEqual(timeoutMs, 60000, 'Timeout delay must be 60,000ms');
   assert.strictEqual(revokedUrl, null, 'URL must not be synchronously revoked on download');
   console.log('✓ Download filename derived cleanly and URL revocation deferred safely.');
+
+  console.log('\n--- 30. Parser: Text encoding detection and BOM sniffing (F-18) ---');
+  // 1. Plain UTF-8
+  const plainUtf8 = new TextEncoder().encode('UTF-8 standard text with emoji: 🚀');
+  assert.strictEqual(parser.decodeTextBuffer(plainUtf8), 'UTF-8 standard text with emoji: 🚀');
+
+  // 2. UTF-8 with BOM
+  const utf8Bom = new Uint8Array([0xEF, 0xBB, 0xBF, ...new TextEncoder().encode('UTF-8 text with BOM')]);
+  assert.strictEqual(parser.decodeTextBuffer(utf8Bom), 'UTF-8 text with BOM');
+
+  // 3. UTF-16LE with BOM
+  const utf16le = new Uint8Array([0xFF, 0xFE, 0x48, 0x00, 0x65, 0x00, 0x6C, 0x00, 0x6C, 0x00, 0x6F, 0x00]); // "Hello"
+  assert.strictEqual(parser.decodeTextBuffer(utf16le), 'Hello');
+
+  // 4. UTF-16BE with BOM
+  const utf16be = new Uint8Array([0xFE, 0xFF, 0x00, 0x48, 0x00, 0x65, 0x00, 0x6C, 0x00, 0x6C, 0x00, 0x6F]); // "Hello"
+  assert.strictEqual(parser.decodeTextBuffer(utf16be), 'Hello');
+
+  // 5. Windows-1252 (contains byte 0x93 which is invalid in UTF-8)
+  const win1252Bytes = new Uint8Array([0x93, 0x53, 0x6D, 0x61, 0x72, 0x74, 0x20, 0x51, 0x75, 0x6F, 0x74, 0x65, 0x94]); // “Smart Quote”
+  assert.strictEqual(parser.decodeTextBuffer(win1252Bytes), '“Smart Quote”');
+
+  // 6. Empty buffer
+  assert.strictEqual(parser.decodeTextBuffer(new Uint8Array(0)), '');
+  console.log('✓ Text encoding detection handles UTF-8, BOMs (UTF-8, UTF-16LE, UTF-16BE), and Windows-1252 fallback.');
 
   console.log('\n====================================================');
   console.log('ALL REGRESSION TESTS PASSED SUCCESSFULLY');

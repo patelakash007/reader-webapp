@@ -208,14 +208,29 @@ export function enforceExtractedTextLimit(text, context = 'document') {
   return value;
 }
 
+export function decodeTextBuffer(buffer) {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer || 0);
+  if (!bytes.length) return '';
+
+  if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+    return new TextDecoder('utf-8').decode(bytes.subarray(3));
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+    return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+    return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+  }
+
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch (err) {
+    return new TextDecoder('windows-1252').decode(bytes);
+  }
+}
+
 function readFileAsText(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = event => resolve(event.target.result || '');
-    reader.onerror = () => reject(reader.error || new Error('The file could not be read.'));
-    reader.onabort = () => reject(new Error('The file read was cancelled.'));
-    reader.readAsText(file);
-  });
+  return readFileAsArrayBuffer(file).then(buffer => decodeTextBuffer(buffer));
 }
 
 function readFileAsArrayBuffer(file) {
