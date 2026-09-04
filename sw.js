@@ -1,42 +1,24 @@
 'use strict';
 
-const CACHE_NAME = 'reader-webapp-shell-v6';
+const CACHE_NAME = 'reader-webapp-shell-v7';
 const APP_SHELL = [
-  './',
-  './index.html',
-  './style.css',
-  './script.js',
-  './src/app.mjs',
-  './src/constants.mjs',
-  './src/context.mjs',
-  './src/dom.mjs',
-  './src/parser.mjs',
-  './src/reader.mjs',
-  './src/settings.mjs',
-  './src/storage.mjs',
-  './src/tts.mjs',
-  './src/ui.mjs',
-  './src/utils.mjs',
-  './manifest.webmanifest',
-  './vendor/pdf.min.js',
-  './vendor/pdf.worker.min.js',
-  './vendor/mammoth.browser.min.js',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/maskable-192.png',
-  './icons/maskable-512.png'
+  './', './index.html', './style.css', './script.js',
+  './src/app.mjs', './src/constants.mjs', './src/context.mjs', './src/dom.mjs', './src/parser.mjs',
+  './src/reader.mjs', './src/settings.mjs', './src/storage.mjs', './src/tts.mjs', './src/ui.mjs', './src/utils.mjs',
+  './manifest.webmanifest', './vendor/pdf.min.js', './vendor/pdf.worker.min.js', './vendor/mammoth.browser.min.js',
+  './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-192.png', './icons/maskable-512.png'
 ];
 
 const ROOT_URL = new URL('./', self.registration.scope).href;
 const INDEX_URL = new URL('./index.html', self.registration.scope).href;
-const ROOT_URL_WITHOUT_TRAILING_SLASH = ROOT_URL.endsWith('/') ? ROOT_URL.slice(0, -1) : ROOT_URL;
+const ROOT_PATH = new URL(ROOT_URL).pathname;
+const INDEX_PATH = new URL(INDEX_URL).pathname;
 const APP_SHELL_URLS = new Set(APP_SHELL.map(path => new URL(path, self.registration.scope).href));
-const CANONICAL_NAVIGATION_URLS = new Set([ROOT_URL, INDEX_URL]);
 
 function getRequestUrl(request) {
   const url = new URL(request.url);
   url.hash = '';
-  if (url.href === ROOT_URL_WITHOUT_TRAILING_SLASH) return ROOT_URL;
+  if (url.href === ROOT_URL.replace(/\/$/, '')) return ROOT_URL;
   return url.href;
 }
 
@@ -49,14 +31,15 @@ function isCanonicalAppShellRequest(request) {
 }
 
 function isCanonicalNavigation(request) {
-  return request.mode === 'navigate' && CANONICAL_NAVIGATION_URLS.has(getRequestUrl(request));
+  if (request.method !== 'GET' || request.mode !== 'navigate') return false;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return false;
+  return url.pathname === ROOT_PATH || url.pathname === INDEX_PATH;
 }
 
 function safeCachePut(cache, request, response) {
   try {
-    return cache.put(request, response).catch(err => {
-      console.warn('Service worker cache write failed.', err);
-    });
+    return cache.put(request, response).catch(err => console.warn('Service worker cache write failed.', err));
   } catch (err) {
     console.warn('Service worker cache write failed.', err);
     return Promise.resolve();
@@ -65,31 +48,21 @@ function safeCachePut(cache, request, response) {
 
 async function cacheCanonicalNavigation(cache, request, response) {
   if (!response || !response.ok || !isCanonicalNavigation(request)) return;
-
   const requestUrl = getRequestUrl(request);
-  const cacheWrites = [safeCachePut(cache, requestUrl, response.clone())];
-
-  if (requestUrl === ROOT_URL) {
-    cacheWrites.push(safeCachePut(cache, INDEX_URL, response.clone()));
-  } else if (requestUrl === INDEX_URL) {
-    cacheWrites.push(safeCachePut(cache, ROOT_URL, response.clone()));
-  }
-
-  await Promise.all(cacheWrites);
+  const writes = [safeCachePut(cache, requestUrl, response.clone())];
+  if (new URL(requestUrl).pathname === ROOT_PATH) writes.push(safeCachePut(cache, INDEX_URL, response.clone()));
+  else if (new URL(requestUrl).pathname === INDEX_PATH) writes.push(safeCachePut(cache, ROOT_URL, response.clone()));
+  await Promise.all(writes);
 }
 
 async function navigationResponse(request, event) {
   const cache = await caches.open(CACHE_NAME);
-
   try {
     const fetchPromise = fetch(request);
-    event.waitUntil(fetchPromise
-      .then(response => cacheCanonicalNavigation(cache, request, response))
-      .catch(() => undefined));
+    event.waitUntil(fetchPromise.then(response => cacheCanonicalNavigation(cache, request, response)).catch(() => undefined));
     return await fetchPromise;
   } catch (err) {
-    const cachedShell = await cache.match(INDEX_URL) || await cache.match(ROOT_URL);
-    return cachedShell || Response.error();
+    return (await cache.match(INDEX_URL)) || (await cache.match(ROOT_URL)) || Response.error();
   }
 }
 
@@ -97,21 +70,11 @@ async function staleWhileRevalidate(request, event) {
   const cache = await caches.open(CACHE_NAME);
   const cached = await cache.match(request);
   const fetchPromise = fetch(request, { cache: 'no-cache' });
-
-  event.waitUntil(fetchPromise
-    .then(response => {
-      if (response && response.ok && isCanonicalAppShellRequest(request)) {
-        return safeCachePut(cache, request, response.clone());
-      }
-      return undefined;
-    })
-    .catch(() => undefined));
-
-  if (cached) {
-    event.waitUntil(fetchPromise.catch(() => undefined));
-    return cached;
-  }
-
+  event.waitUntil(fetchPromise.then(response => {
+    if (response && response.ok && isCanonicalAppShellRequest(request)) return safeCachePut(cache, request, response.clone());
+    return undefined;
+  }).catch(() => undefined));
+  if (cached) return cached;
   return fetchPromise;
 }
 
@@ -127,22 +90,16 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys
-      .filter(key => key !== CACHE_NAME)
-      .map(key => caches.delete(key)));
+    await Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)));
     await self.clients.claim();
   })());
 });
 
 self.addEventListener('fetch', event => {
   const { request } = event;
-
-  if (request.mode === 'navigate') {
+  if (isCanonicalNavigation(request)) {
     event.respondWith(navigationResponse(request, event));
     return;
   }
-
-  if (isCanonicalAppShellRequest(request)) {
-    event.respondWith(staleWhileRevalidate(request, event));
-  }
+  if (isCanonicalAppShellRequest(request)) event.respondWith(staleWhileRevalidate(request, event));
 });

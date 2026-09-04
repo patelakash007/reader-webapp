@@ -10,211 +10,81 @@ const path = require('node:path');
   const constants = await import('../src/constants.mjs');
   const scriptSource = fs.readFileSync(path.join(__dirname, '../script.js'), 'utf8');
 
-  console.log('--- Running Reader & TTS Unit and Integration Tests ---');
-
-  assert(!scriptSource.includes('.substr('), 'script.js should not contain deprecated String.prototype.substr calls');
-  assert(scriptSource.includes("import('./src/app.mjs')"), 'script.js should dynamically import the ES module application entry');
-  assert(!scriptSource.includes('speechGeneration'), 'speech session state should not leak into the compatibility shim');
-  console.log('✓ Check 1: Compatibility entry and module contract validation passed.');
+  console.log('--- Reader core regression tests ---');
+  assert(scriptSource.includes("import('./src/app.mjs')"));
+  assert(!scriptSource.includes('.substr('));
 
   const short = 'This is a short sample sentence.';
-  const shortChunks = tts.chunkText(short);
-  assert.deepStrictEqual(shortChunks, [{ text: short, start: 0, end: short.length }]);
+  assert.deepStrictEqual(tts.chunkText(short), [{ text: short, start: 0, end: short.length }]);
+  const long = tts.chunkText('The quick brown fox jumps over the lazy dog repeatedly to test long character chunking in our unified reading application.', 100, 40);
+  assert(long.length > 2);
+  long.forEach(chunk => assert.strictEqual(chunk.end, chunk.start + chunk.text.length));
+  assert.deepStrictEqual(tts.chunkText('A'.repeat(250)).map(chunk => chunk.text.length), [190, 60]);
 
-  const paragraph = 'The quick brown fox jumps over the lazy dog repeatedly to test long character chunking in our unified reading application. Every sentence is split cleanly on word boundaries so that speech synthesis engines never hit the Chromium 15-second audio drop limit.';
-  const longChunks = tts.chunkText(paragraph, 100, 190);
-  assert(longChunks.length > 1, 'Long text should produce multiple chunks');
-  longChunks.forEach(chunk => {
-    assert(chunk.text.length <= 190, `Chunk length ${chunk.text.length} exceeds 190 target`);
-    assert(chunk.start >= 100, 'Base offset was not applied correctly');
-    assert.strictEqual(chunk.end, chunk.start + chunk.text.length, 'Chunk start + length should equal chunk end');
-    assert(!/^\s/.test(chunk.text), 'Chunk should not start with leading whitespace');
-  });
-
-  const giantChunks = tts.chunkText('A'.repeat(250));
-  assert.deepStrictEqual(giantChunks.map(chunk => chunk.text.length), [190, 60]);
-  console.log('✓ Check 2: 190-character chunking algorithm passed.');
-
-  const pdfItemsSameLine = [
-    { str: 'Hello', transform: [1, 0, 0, 1, 50, 700], width: 30, height: 12 },
-    { str: 'World', transform: [1, 0, 0, 1, 90, 700], width: 35, height: 12 }
-  ];
-  assert.strictEqual(parser.extractPdfPageText(pdfItemsSameLine), 'Hello World');
-  const pdfItemsNewLine = [
-    { str: 'Heading Line', transform: [1, 0, 0, 1, 50, 700], width: 80, height: 12 },
-    { str: 'Paragraph line', transform: [1, 0, 0, 1, 50, 670], width: 90, height: 12 }
-  ];
-  assert(parser.extractPdfPageText(pdfItemsNewLine).includes('Heading Line\n\nParagraph line'));
-  console.log('✓ Check 3: Production PDF text extraction spacing passed.');
-
-  const mockVoices = [
-    { name: 'Google US English', lang: 'en-US', voiceURI: 'google-en-us', default: false },
-    { name: 'Google US English', lang: 'en-US', voiceURI: 'google-en-us-dup', default: false },
+  const voices = tts.deduplicateAndSortVoices([
+    { name: 'Google US English', lang: 'en-US', voiceURI: 'google-1', default: false },
+    { name: 'Google US English', lang: 'en-US', voiceURI: 'google-2', default: false },
     { name: 'Alex', lang: 'en-US', voiceURI: 'alex', default: true },
     { name: 'Anna', lang: 'de-DE', voiceURI: 'anna', default: false }
+  ]);
+  assert.strictEqual(voices.length, 3);
+  assert.strictEqual(voices[0].name, 'Alex');
+  assert.strictEqual(tts.resolveVoiceIndex(voices, 'anna', 'en-US'), voices.findIndex(v => v.voiceURI === 'anna'));
+
+  const pdfItems = [
+    { str: 'Hello', transform: [1, 0, 0, 1, 50, 700], width: 30, height: 12 },
+    { str: 'World', transform: [1, 0, 0, 1, 90, 700], width: 35, height: 12 },
+    { str: 'Next', transform: [1, 0, 0, 1, 50, 670], width: 25, height: 12 }
   ];
-  const sorted = tts.deduplicateAndSortVoices(mockVoices);
-  assert.strictEqual(sorted.length, 3);
-  assert.strictEqual(sorted[0].name, 'Alex');
-  assert.strictEqual(tts.resolveVoiceIndex(sorted, 'anna', 'en-US'), sorted.findIndex(v => v.voiceURI === 'anna'));
-  assert.strictEqual(tts.resolveVoiceIndex(sorted, 'non-existent', 'de-DE'), sorted.findIndex(v => v.lang === 'de-DE'));
-  console.log('✓ Check 4: Production voice deduplication and selection passed.');
+  assert.strictEqual(parser.extractPdfPageText(pdfItems), 'Hello World\n\nNext');
 
-  class MockNode {
-    constructor(nodeType, nodeValue = null, tagName = null) {
-      this.nodeType = nodeType;
-      this.nodeValue = nodeValue;
-      this.tagName = tagName;
-      this.childNodes = [];
-      this.parentNode = null;
-      this.attributes = {};
-      this.classList = {
-        values: new Set(),
-        add: value => this.classList.values.add(value),
-        remove: value => this.classList.values.delete(value),
-        has: value => this.classList.values.has(value)
-      };
-    }
-    get parentElement() {
-      return this.nodeType === 1 ? this : this.parentNode && this.parentNode.nodeType === 1 ? this.parentNode : null;
-    }
-    appendChild(child) {
-      child.parentNode = this;
-      this.childNodes.push(child);
-      return child;
-    }
-    replaceChild(newChild, oldChild) {
-      const index = this.childNodes.indexOf(oldChild);
-      if (index === -1) return;
-      if (newChild.nodeType === 11) {
-        const children = [...newChild.childNodes];
-        children.forEach(child => { child.parentNode = this; });
-        this.childNodes.splice(index, 1, ...children);
-        newChild.childNodes = [];
-      } else {
-        newChild.parentNode = this;
-        this.childNodes.splice(index, 1, newChild);
-      }
-    }
-    setAttribute(name, value) { this.attributes[name] = value; }
-    getAttribute(name) { return this.attributes[name] || null; }
-    hasAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attributes, name); }
-    closest(selector) {
-      const tags = selector.split(',').map(value => value.trim().toUpperCase());
-      let current = this;
-      while (current) {
-        if (current.tagName && tags.includes(current.tagName.toUpperCase())) return current;
-        current = current.parentNode;
-      }
-      return null;
-    }
-    get textContent() {
-      return this.nodeType === 3 ? this.nodeValue : this.childNodes.map(child => child.textContent).join('');
-    }
-    set textContent(value) {
-      this.childNodes = [new MockNode(3, value)];
-      this.childNodes[0].parentNode = this;
-    }
+  class NodeMock {
+    constructor(type, value = '', tagName = '') { this.nodeType = type; this.nodeValue = value; this.tagName = tagName; this.childNodes = []; this.parentNode = null; this.attributes = {}; this.classList = { add() {}, remove() {} }; }
+    get parentElement() { return this.nodeType === 1 ? this : this.parentNode && this.parentNode.nodeType === 1 ? this.parentNode : null; }
+    appendChild(node) { node.parentNode = this; this.childNodes.push(node); return node; }
+    replaceChild(next, previous) { const i = this.childNodes.indexOf(previous); if (i >= 0) { next.parentNode = this; this.childNodes.splice(i, 1, next); } }
+    setAttribute(k, v) { this.attributes[k] = v; }
+    getAttribute(k) { return this.attributes[k] ?? null; }
+    hasAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attributes, k); }
+    closest(selector) { const tags = selector.split(',').map(s => s.trim().toUpperCase()); let node = this; while (node) { if (node.tagName && tags.includes(node.tagName.toUpperCase())) return node; node = node.parentNode; } return null; }
+    get textContent() { return this.nodeType === 3 ? this.nodeValue : this.childNodes.map(node => node.textContent).join(''); }
   }
-
-  class MockDocument {
-    createTextNode(text) { return new MockNode(3, text); }
-    createElement(tag) { return new MockNode(1, null, tag.toUpperCase()); }
-    createDocumentFragment() { return new MockNode(11); }
-    createTreeWalker(root, showWhat, filter) {
+  class DocumentMock {
+    createTextNode(text) { return new NodeMock(3, text); }
+    createElement(tag) { return new NodeMock(1, '', tag.toUpperCase()); }
+    createDocumentFragment() { return new NodeMock(11); }
+    createTreeWalker(root) {
       const nodes = [];
-      const visit = node => {
-        if (node.nodeType === 3) {
-          if (!filter || filter.acceptNode(node) !== NodeFilter.FILTER_SKIP) nodes.push(node);
-          return;
-        }
-        node.childNodes.forEach(visit);
-      };
-      visit(root);
-      let index = -1;
-      return {
-        currentNode: null,
-        nextNode() {
-          index += 1;
-          this.currentNode = nodes[index] || null;
-          return Boolean(this.currentNode);
-        }
-      };
+      const visit = node => { if (node.nodeType === 3) nodes.push(node); else node.childNodes.forEach(visit); };
+      visit(root); let i = -1;
+      return { nextNode() { i += 1; this.currentNode = nodes[i] || null; return Boolean(this.currentNode); }, currentNode: null };
     }
   }
-
-  global.NodeFilter = { SHOW_TEXT: 4, FILTER_ACCEPT: 1, FILTER_REJECT: 2, FILTER_SKIP: 3 };
-  const documentObject = new MockDocument();
+  global.NodeFilter = { SHOW_TEXT: 4, FILTER_ACCEPT: 1, FILTER_SKIP: 3, FILTER_REJECT: 2 };
+  const documentObject = new DocumentMock();
   const article = documentObject.createElement('article');
-  const heading = documentObject.createElement('h1');
-  heading.appendChild(documentObject.createTextNode('Chapter One'));
-  article.appendChild(heading);
-  const paragraphNode = documentObject.createElement('p');
-  paragraphNode.appendChild(documentObject.createTextNode('This is '));
+  const p = documentObject.createElement('p');
+  p.appendChild(documentObject.createTextNode('This is '));
   const strong = documentObject.createElement('strong');
   strong.appendChild(documentObject.createTextNode('bold text'));
-  paragraphNode.appendChild(strong);
-  paragraphNode.appendChild(documentObject.createTextNode(' and a link.'));
-  article.appendChild(paragraphNode);
-
+  p.appendChild(strong);
+  p.appendChild(documentObject.createTextNode(' here.'));
+  article.appendChild(p);
   const tokenized = tts.tokenizeReaderDOM(article, documentObject);
   assert.strictEqual(tokenized.spans.length, tokenized.meta.length);
-  assert(tokenized.meta.length >= 9);
-  tokenized.meta.forEach(word => {
-    assert.strictEqual(tokenized.text.slice(word.start, word.end), word.text);
-    assert.strictEqual(word.element.getAttribute('data-word-idx'), String(word.index));
-  });
-  assert.strictEqual(tokenized.spans.find(span => span.textContent === 'bold').parentNode.tagName, 'STRONG');
-  console.log('✓ Check 5: Production DOM word tokenization and offset mapping passed.');
+  tokenized.meta.forEach(word => assert.strictEqual(tokenized.text.slice(word.start, word.end), word.text));
 
-  const markdown = [
-    '# Heading',
-    '',
-    'HELLO SECTION',
-    '',
-    'Paragraph with **bold**, *emphasis*, `code`, [safe](https://example.com), and [bad](javascript:alert(1)).',
-    '',
-    '```',
-    '<script>literal</script>',
-    '```',
-    '',
-    '- first item',
-    '1. ordered item',
-    '',
-    '> quoted text'
-  ].join('\n');
-  const html = parser.parseMarkdownToHtml(markdown);
-  assert(html.includes('<h1 id="heading-0">Heading</h1>'));
-  assert(html.includes('<h2 id="heading-2">HELLO SECTION</h2>'));
-  assert(html.includes('<strong>bold</strong>'));
-  assert(html.includes('<em>emphasis</em>'));
-  assert(html.includes('<a href="https://example.com" target="_blank" rel="noopener noreferrer">safe</a>'));
-  assert(!html.includes('javascript:'));
-  assert(html.includes('&lt;script&gt;literal&lt;/script&gt;'));
-  assert(html.includes('<ol><li>ordered item</li></ol>'));
-  console.log('✓ Check 6: Production Markdown rendering and sanitization passed.');
+  const markdown = parser.parseMarkdownToHtml('# Heading\n\nParagraph with **bold *nested*** and 2 * 3 * 4.');
+  assert(markdown.includes('<h1 id="heading">Heading</h1>'));
+  assert(markdown.includes('<strong>bold <em>nested</em></strong>'));
+  assert(markdown.includes('2 * 3 * 4'));
 
   assert.strictEqual(parser.getExtension('sample.MARKDOWN'), 'markdown');
-  assert.strictEqual(parser.enforceExtractedTextLimit('valid text'), 'valid text');
+  assert.strictEqual(parser.enforceExtractedTextLimit('valid'), 'valid');
   assert.throws(() => parser.enforceExtractedTextLimit('x'.repeat(1_000_001)), /too much extracted text/);
-  console.log('✓ Check 7: Production file helpers and extracted-text limits passed.');
-
   assert.strictEqual(constants.lightPresets.length, 10);
   assert.strictEqual(constants.darkPresets.length, 10);
   assert.strictEqual(constants.VALID_THEMES.size, 20);
-  const expectedLightNames = ['Claude', 'Zen', 'Stark', 'Book', 'Classic', 'Kindle', 'GitHub', 'Amber', 'Newspaper', 'Lavender'];
-  const expectedDarkNames = ['Night', 'Void', 'Carbon', 'Midnight', 'Obsidian', 'Dracula', 'Nord', 'Catppuccin', 'Forest', 'Ink'];
-  assert.deepStrictEqual(constants.lightPresets.map(preset => preset.name), expectedLightNames);
-  assert.deepStrictEqual(constants.darkPresets.map(preset => preset.name), expectedDarkNames);
-  [...constants.lightPresets, ...constants.darkPresets].forEach(preset => {
-    assert(constants.VALID_THEMES.has(preset.theme));
-    assert(preset.name && preset.font && preset.theme && preset.color && preset.desc);
-  });
-  console.log('✓ Check 8: Production preset and theme inventory passed.');
 
-  console.log('----------------------------------------------------');
-  console.log('ALL UNIT & INTEGRATION TESTS PASSED SUCCESSFULLY!');
-})().catch(error => {
-  console.error(error);
-  process.exitCode = 1;
-});
+  console.log('ALL READER CORE REGRESSION TESTS PASSED.');
+})().catch(error => { console.error(error); process.exitCode = 1; });

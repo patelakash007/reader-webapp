@@ -1,6 +1,12 @@
 import { STATE_IDLE } from './constants.mjs';
 
 export function createAppContext(els) {
+  const hasTouchPoints = typeof navigator !== 'undefined' && Number(navigator.maxTouchPoints || 0) > 0;
+  const noHoverPrimary = typeof window !== 'undefined' && window.matchMedia
+    ? window.matchMedia('(hover: none)').matches
+    : false;
+  const touchInteractionDevice = hasTouchPoints && noHoverPrimary;
+
   return {
     els,
     state: {
@@ -27,25 +33,10 @@ export function createAppContext(els) {
       lastCarouselDragDistance: 0
     },
     runtime: {
-      autoScroll: {
-        active: false,
-        speed: 0.04,
-        lastScrollTime: 0,
-        accumulator: 0
-      },
-      reader: {
-        activeRenderId: 0,
-        isRulerActive: false,
-        editDebounceTimer: null,
-        lastActiveElement: null
-      },
-      file: {
-        activeReadToken: 0,
-        loadedLibraries: new Map()
-      },
-      fonts: {
-        loaded: new Set(['sans', 'serif'])
-      },
+      autoScroll: { active: false, speed: 0.04, lastScrollTime: 0, accumulator: 0 },
+      reader: { activeRenderId: 0, isRulerActive: false, editDebounceTimer: null, lastActiveElement: null },
+      file: { activeReadToken: 0, loadedLibraries: new Map() },
+      fonts: { loaded: new Set(['sans', 'serif']) },
       tts: {
         voices: [],
         wordMeta: [],
@@ -65,12 +56,12 @@ export function createAppContext(els) {
         visibilityInterrupted: false,
         speechCanceledWhileHidden: false,
         isSpeaking: false,
+        lazyMode: false,
+        lazySegments: [],
+        lazyHighlight: null,
         supported: typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window,
-        synth: typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window
-          ? window.speechSynthesis
-          : null,
-        isMobile: typeof navigator !== 'undefined' && (/Android/i.test(navigator.userAgent) ||
-          (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches))
+        synth: typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window ? window.speechSynthesis : null,
+        isMobile: touchInteractionDevice
       }
     }
   };

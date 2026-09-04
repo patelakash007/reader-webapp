@@ -1,18 +1,20 @@
 name: Quality checks
 
 on:
-  pull_request:
   push:
-    branches:
-      - main
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
-  hygiene:
-    name: Repository hygiene
+  quality:
+    name: Full quality suite
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Node
@@ -24,54 +26,41 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
-      - name: Install Playwright Chromium for smoke tests
+      - name: Install Playwright Chromium
         run: npx playwright-core install --with-deps chromium
 
-      - name: Check required files
+      - name: Resolve Chromium executable
+        run: echo "BROWSER_EXE=$(node -e "process.stdout.write(require('playwright-core').chromium.executablePath())")" >> "$GITHUB_ENV"
+
+      - name: Repository hygiene and source policy
         shell: bash
         run: |
           set -euo pipefail
-
-          required_files=(
-            "index.html"
-            "style.css"
-            "script.js"
-            "src/app.mjs"
-            "README.md"
-            "LICENSE"
-            "vendor/pdf.min.js"
-            "vendor/pdf.worker.min.js"
-            "vendor/mammoth.browser.min.js"
-          )
-
-          for file in "${required_files[@]}"; do
-            if [[ ! -f "$file" ]]; then
-              echo "Missing required file: $file" >&2
-              exit 1
-            fi
-          done
-
-      - name: Check CSP meta tag
-        shell: bash
-        run: |
-          set -euo pipefail
-          grep -qi 'Content-Security-Policy' index.html
-
-      - name: Check for CDN URLs
-        shell: bash
-        run: |
-          set -euo pipefail
-
+          test -f index.html
+          test -f sw.js
+          test -f manifest.webmanifest
           if grep -REin '(cdn(js)?|unpkg|jsdelivr)' index.html style.css script.js src; then
-            echo "CDN reference found in app source files." >&2
+            echo 'CDN reference found in application source.' >&2
             exit 1
           fi
 
-      - name: Check JavaScript syntax
+      - name: Syntax checks
         run: npm run test:syntax
 
-      - name: Validate PWA app shell
+      - name: PWA validation
         run: npm run test:pwa
 
-      - name: Run browser smoke checks
+      - name: Unit and integration tests
+        run: npm run test:unit
+
+      - name: Empirical stress tests
+        run: npm run test:empirical
+
+      - name: Playwright smoke tests
         run: npm run test:smoke
+
+      - name: Deep Playwright regression tests
+        run: npm run test:deep
+
+      - name: Direct Chromium smoke tests
+        run: npm run test:chromium

@@ -1,41 +1,33 @@
 # Reader Webapp
 
-A personal, clean reading webapp for articles, AI responses, basic Markdown, PDFs, DOCX files, and long text.
-
-The goal is simple: paste or open messy reading material, remove the noise, and read it in a calmer interface with better typography, themes, and local-first privacy.
+A personal, clean reading webapp for pasted text, TXT, Markdown, PDF, and DOCX documents. It is designed to remove reading noise while keeping processing local-first, offline-capable, and framework-free.
 
 ## Live demo
 
-After GitHub Pages is enabled, the app should be available here:
+After GitHub Pages is enabled:
 
 https://patelakash007.github.io/reader-webapp/
 
 ## Features
 
-- **Multi-Format Document Support**: Seamlessly parses and renders Pasted Text, plain text (`.txt`), Markdown (`.md`, `.markdown`), DOCX (`.docx` via local Mammoth.js), and PDF (`.pdf` via local PDF.js).
-- **Native Text-to-Speech Engine**:
-  - **Synchronized Real-Time Word Highlighting**: Active word highlighting (`.tts-word.active`) across all 20 custom theme presets.
-  - **Smart Viewport Auto-Scrolling**: Keeps narration position comfortably centered in view with tempo-aware jitter prevention at high speeds.
-  - **Click-to-Speak Navigation**: Click any word or sentence in the reader view to instantly jump narration to that position.
-  - **190-Character Word-Safe Chunking**: Prevents Chromium's 15-second silent audio timeout.
-  - **Dual Boundary Tracking**: Uses native `SpeechSynthesisUtterance.onboundary` with an automatic 100ms synthetic estimate timer fallback (180 WPM × rate) for speech engines lacking boundary events.
-  - **Generation & Concurrency Safety**: Monotonic `speechGeneration` session counter rejects stale asynchronous callbacks.
-  - **Mobile Lifecycle & Android Resilience**: Desktop-only 10-second watchdog keepalive and mobile cancel-on-pause with seamless word-index resume (`restartFromWord`).
-  - **Background Audio Leak Prevention**: Tab lifecycle event listeners (`visibilitychange`, `pagehide`, `pageshow`) automatically pause and cleanly manage hidden tabs.
-  - **Voice Discovery & Persistent Selection**: Asynchronous voice polling, compound deduplication (`name + lang`), locale-aware sorting, and multi-tier persistence ladder.
-  - **Responsive Audio Controls**: Accessible Play, Pause, Resume, Stop, Voice Speed (0.5x–2.5x), and Voice Selector directly in the Listen drawer and floating bottom Audio Player Bar.
-- **20 Theme Presets & Typography Engine**: 10 Light and 10 Dark themes, typography sliders (line height, letter spacing, margins), font size presets (S/M/L/XL), and reading ruler guide.
-- **Table of Contents & In-Context Editor**: Modal TOC dialog extracted from document headings, distraction-free Focus mode, and in-place Markdown editing with session persistence.
-- **100% Local-First & Privacy-Focused**: All file extraction, parsing, and speech synthesis execute purely inside the browser without external network telemetry.
-- **Progressive Web App (PWA) Offline Operation**: Standalone installable PWA with Service Worker precaching of the HTML, CSS, compatibility entry, ES modules, local parser bundles, manifest, and icons.
+- **Local document processing**: TXT/Markdown are parsed directly in the browser; PDF and DOCX parsing use the bundled local PDF.js and Mammoth engines.
+- **Markdown reader**: headings H1-H6, nested lists, ordered-list starts, multiline blockquotes, inline code, links, emphasis, escaped punctuation, soft line breaks, images with a privacy-preserving placeholder, and safe malformed-input handling.
+- **Text-to-speech**: word highlighting, speech-length mitigation through 190-character word-safe chunks, generation-fenced callbacks, lifecycle handling, voice selection, speed controls, and bounded tokenization for large documents.
+- **Reader controls**: themes, typography controls, font-size presets, reading ruler, focus mode, table of contents, download, and in-session editing.
+- **PWA**: installable offline app shell with local assets and no runtime CDN dependency.
+- **Privacy**: uploaded documents and reading content are not persisted by the application.
+
+### TTS scaling note
+
+Normal-sized documents use `.tts-word` elements for precise word-level click-to-speak and highlighting. Documents over 5,000 words use a bounded text-node index instead of creating thousands of word spans. Large-document highlighting therefore uses a single movable visual marker and does not create one DOM node per word.
+
+The 190-character chunk size is a speech-length mitigation for browser synthesis reliability. It is not a guarantee about a fixed number of seconds of speech because speech duration varies by voice, language, punctuation, browser, and rate.
 
 ## Project structure
 
 ```text
 reader-webapp/
-|-- .github/
-|   `-- workflows/
-|       `-- quality-checks.yml
+|-- .github/workflows/quality-checks.yml
 |-- icons/
 |   |-- icon-192.png
 |   |-- icon-512.png
@@ -43,274 +35,109 @@ reader-webapp/
 |   `-- maskable-512.png
 |-- scripts/
 |   |-- browser-smoke-utils.js
+|   |-- check-syntax.js
 |   |-- deep-playwright.js
 |   |-- smoke-chromium.js
 |   |-- smoke-playwright.js
-|   `-- validate-pwa.js
+|   |-- validate-pwa.js
+|   `-- validate-pwa.ps1
+|-- src/
+|   |-- app.mjs
+|   |-- constants.mjs
+|   |-- context.mjs
+|   |-- dom.mjs
+|   |-- parser.mjs
+|   |-- reader.mjs
+|   |-- settings.mjs
+|   |-- storage.mjs
+|   |-- tts.mjs
+|   |-- ui.mjs
+|   `-- utils.mjs
 |-- tests/
-|   `-- test_reader.js
+|   |-- test_reader.js
+|   |-- test_tts_controller.js
+|   |-- test_empirical_stress.js
+|   `-- test_hardening.js
 |-- vendor/
 |   |-- mammoth.browser.min.js
 |   |-- pdf.min.js
 |   `-- pdf.worker.min.js
-|-- package.json
-|-- package-lock.json
 |-- index.html
 |-- style.css
-|-- script.js                 # Stable classic compatibility entry
-|-- src/
-|   |-- app.mjs               # Initialization and module wiring
-|   |-- constants.mjs         # Static configuration and presets
-|   |-- context.mjs           # Shared transient application state
-|   |-- dom.mjs               # DOM element collection
-|   |-- parser.mjs             # Markdown and file extraction
-|   |-- reader.mjs             # Rendering and reader controls
-|   |-- settings.mjs           # Themes, presets, and typography
-|   |-- storage.mjs            # Legacy storage cleanup only
-|   |-- tts.mjs                # Speech synthesis and highlighting
-|   |-- ui.mjs                 # Status, dialogs, and UI helpers
-|   `-- utils.mjs              # Shared guards and numeric helpers
+|-- script.js
 |-- sw.js
 |-- manifest.webmanifest
+|-- package.json
+|-- package-lock.json
 |-- README.md
 |-- LICENSE
 `-- .gitignore
 ```
 
-## How to use
-
-### Option 1: Use from GitHub Pages
-
-Open the live demo link above after GitHub Pages is enabled.
-
-### Option 2: Run locally
-
-Clone the repository:
+## Run locally
 
 ```bash
 git clone git@github.com:patelakash007/reader-webapp.git
 cd reader-webapp
-```
-
-For the most reliable preview, especially for PDF/DOCX parsing and the local PDF worker, run a local server:
-
-```bash
+npm ci
 python -m http.server 8080
 ```
 
-Then open:
-
-```text
-http://localhost:8080/
-```
-
-Opening `index.html` directly may work for pasted text, TXT, and Markdown, but browser file restrictions can make PDF/DOCX handling unreliable.
-
-### Install as app
-
-On supported browsers, open Reader Webapp from GitHub Pages or a local server, then use the browser's Install app option. The PWA service worker caches only static app files so the app shell can reload offline after the first visit.
+Open `http://localhost:8080/`. A local server is recommended for PDF/DOCX parsing, service-worker behavior, and PWA testing.
 
 ## Testing
 
-Reader Webapp supports two browser-test environments:
-
-- Full browser automation: Node, Playwright or `playwright-core`, and a Chromium-compatible executable are available.
-- Minimal browser smoke: Node and a Chromium-compatible executable are available, but Playwright may not be installed.
-
-Playwright and Chromium do not need to be checked into this repository. Browser paths can be supplied by environment variable, and generated smoke-test artifacts are ignored by Git.
-
-### Static checks
-
-Run the JavaScript syntax check:
+### Static and native checks
 
 ```bash
 npm run test:syntax
-```
-
-This validates the classic `script.js` compatibility entry and every production ES module under `src/`. The service worker precaches the complete local module graph so the app remains available offline after installation.
-
-Run the PWA app-shell validation:
-
-```bash
 npm run test:pwa
-```
-
-### Unit and Integration tests
-
-Run the native test suite covering chunking, word tokenization, speech state machine, mobile lifecycle, and PDF extraction:
-
-```bash
 npm run test:unit
+npm run test:empirical
 ```
 
-This runs `tests/test_reader.js` and `tests/test_tts_controller.js`, validating the core engine and production speech controller headless in Node.js.
+`test:unit` covers reader core, PDF extraction, TTS state transitions, multi-chunk progression, boundary handling, and focused hardening regressions. `test:empirical` adds larger inputs and stress-oriented checks.
 
-### Full Playwright and Chromium smoke test
-
-Run:
-
-```bash
-npm run test:smoke
-```
-
-The script starts a local static server on an available loopback port, for example:
-
-```text
-http://127.0.0.1:<port>/
-```
-
-When Playwright is available, this smoke test:
-
-- verifies the app shell loads and the page title matches Reader Webapp
-- captures desktop, reader-flow, and mobile screenshots
-- captures console errors and page errors
-- pastes sample Markdown into the stable `#pasteArea` field when available
-- clicks the stable `#readBtn` control when available
-- verifies rendered reader content without relying on brittle visual selectors
-
-If Playwright is available and a browser executable is detected, the script launches Chromium with an explicit `executablePath`. If no executable is detected, `playwright-core` reports how to set a browser path, while the full `playwright` package may use its own installed browser if present.
-
-### Deep Playwright regression test
-
-Run:
-
-```bash
-npm run test:deep
-```
-
-The deeper Playwright check exercises Markdown sanitization, reload reset behavior, table of contents, settings controls, edit/save, download, `.markdown` upload support, file error states, service-worker offline reload, and mobile settings layout.
-
-### Chromium-only fallback smoke test
-
-Run:
-
-```bash
-npm run test:chromium
-```
-
-This starts the same dynamic-port local static server and launches an existing Chromium-compatible executable directly. It checks that the URL loads, verifies the app shell marker in dumped HTML, and saves screenshot and HTML evidence.
-
-Chromium-only smoke is intentionally limited: it can check app load, DOM output, and screenshot capture. Playwright smoke is needed for interaction checks, console error capture, page error capture, and mobile viewport coverage.
-
-### Browser executable detection
-
-Both smoke scripts prefer these environment variables, in order:
-
-```text
-BROWSER_EXE
-PLAYWRIGHT_CHROMIUM_EXECUTABLE
-CHROMIUM_EXECUTABLE
-```
-
-If none are set, the scripts check common Chromium, Chrome, and Edge install paths for the current operating system. Do not hard-code personal paths in this repo; use an environment variable when automatic detection is not enough.
-
-### Artifacts
-
-Smoke-test screenshots, dumped HTML, and JSON logs are written under:
-
-```text
-output/browser-smoke/
-```
-
-The following generated paths are ignored:
-
-- `output/`
-- `test-results/`
-- `playwright-report/`
-- `.playwright-cli/`
-- smoke-test screenshots, HTML dumps, and JSON logs
-
-### Agent testing contract
-
-Before editing reader UI, parser behavior, PWA behavior, service worker behavior, or file-reading behavior, agents and contributors should run:
-
-```bash
-npm test
-```
-
-Browser smoke artifacts are generated under `output/browser-smoke/`.
-
-To run the full browser automation path directly:
-
-```bash
-npm run test:smoke
-```
-
-If full Playwright automation is unavailable but a Chromium-compatible executable exists, run the fallback path manually:
-
-```bash
-npm run test:chromium
-```
-
-Both browser smoke paths can use these environment variables to point at a Chromium-compatible executable:
-
-```text
-BROWSER_EXE
-PLAYWRIGHT_CHROMIUM_EXECUTABLE
-CHROMIUM_EXECUTABLE
-```
-
-### Combined test command
-
-Run:
-
-```bash
-npm test
-```
-
-This runs syntax validation for `script.js` and every `src/*.mjs` module, PWA validation, production-import unit tests, and the empirical stress suite. Browser checks remain explicit:
+### Browser checks
 
 ```bash
 npm run test:smoke
 npm run test:deep
+npm run test:chromium
 ```
 
-If Playwright is unavailable, `npm run test:smoke` reports the skip reason and falls back to the Chromium-only smoke path.
+The browser suites use a dynamic loopback server. Playwright smoke covers shell loading, reader flow, console/page errors, and mobile coverage. Deep Playwright covers interaction-heavy regressions such as Markdown rendering, TOC, settings, editing, downloads, uploads, and offline reload. The Chromium-only path provides a direct executable smoke check.
 
-### Manual testing checklist
+### Combined validation
 
-For manual smoke testing, use `http://localhost:8080/` or the GitHub Pages URL. Service worker and PWA behavior should be tested from localhost or GitHub Pages, not by opening `index.html` directly.
+```bash
+npm run test:all
+```
 
-- Paste text into the reader.
-- Upload TXT, Markdown, PDF, and DOCX files.
-- Try reader controls such as theme, typography, spacing, width, and text-to-speech.
-- Install the PWA from a supported browser.
-- After the first visit, reload the app while offline and confirm the app shell still opens.
-- Confirm documents, pasted text, reading state, and preferences are not persisted after reload.
+This command runs syntax, PWA, unit, empirical, Playwright smoke, deep browser, and direct Chromium validation. CI uses the same families of checks rather than relying only on static repository hygiene.
 
-## Privacy notes
+## Security model
 
-Reader Webapp is designed to keep reading local-first. Documents are opened and processed inside the browser where possible, and PDF/DOCX parser libraries are bundled locally in this repo.
+The app keeps `script-src 'self'`, `object-src 'none'`, same-origin workers, and local vendor assets. Markdown output is escaped before markup is introduced, link destinations are scheme-validated, external images are represented as placeholders instead of being silently fetched, and PDF scripting is disabled during extraction. Uploaded files are bounded by file-size, page-count, and extracted-text limits.
 
-Local-first does not mean zero risk when the app is hosted online, but the app avoids default third-party font requests and processes supported documents in the browser. The app does not persist documents, pasted text, reading state, or preferences in browser storage. PWA offline caching is limited to app shell files such as HTML, CSS, JavaScript, local vendor libraries, the manifest, and icons; uploaded documents and generated downloads are not cached by the app. Avoid pasting sensitive private data into any online-hosted version unless you fully trust the environment and browser session.
+Links opened in a new tab use `noopener noreferrer`. The service worker only handles same-origin canonical app-shell navigations and known local shell assets; unrelated navigations are left to the browser.
+
+## Offline behavior
+
+The service worker precaches the complete application module graph, manifest, icons, and bundled parser engines. It also maintains canonical `/` and `/index.html` navigation fallbacks. Uploaded files, generated downloads, and document content are not added to the cache.
+
+## Editing behavior
+
+Editing is backed by a plain-text `<textarea>` containing the original session text rather than by serializing rendered HTML back into Markdown. This preserves blank lines, indentation, Markdown syntax, code blocks, and trailing whitespace more faithfully. Edits remain in the current page session only.
+
+## Known limitations
+
+Complex multi-column PDF layouts and highly structured DOCX documents can still extract text in an order that differs from the visual layout. Browser speech engines differ in boundary-event support and background-audio policies. The app mitigates those differences but cannot make browser-native speech synthesis fully uniform across platforms.
 
 ## Development workflow
 
-Preferred workflow for changes:
-
-1. Create a new branch for each improvement.
-2. Commit the change to that branch.
-3. Open a pull request into `main`.
-4. Review the diff before merging.
-
-Example:
-
-```bash
-git checkout -b feature/better-reading-mode
-# edit files
-git add index.html style.css script.js README.md .gitignore vendor/
-git commit -m "feat: improve reading mode"
-git push -u origin feature/better-reading-mode
-```
-
-## Roadmap ideas
-
-- Better pasted-article cleanup
-- Improved Markdown rendering
-- Reading progress polish
-- More accessibility checks
-- Better mobile toolbar behavior
+Use a feature branch, run the native and browser suites relevant to a change, inspect the final diff, and open a pull request into `main`. Do not add runtime CDN dependencies or weaken the CSP to work around local asset problems.
 
 ## License
 
-This project is licensed under the MIT License. See [`LICENSE`](LICENSE) for details.
+MIT. See [`LICENSE`](LICENSE).
