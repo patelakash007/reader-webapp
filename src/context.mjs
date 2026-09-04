@@ -24,6 +24,7 @@ export function createAppContext(els) {
       isGesture: false,
       isEditing: false,
       smartHeadings: true,
+      textSource: 'paste',
       wordCountTimer: null,
       lastCarouselDragDistance: 0
     },
