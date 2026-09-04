@@ -1,0 +1,7 @@
+/* Interaction-layer hotfixes kept separate so the main experience stylesheet stays readable. */
+@media (max-width: 760px) {
+  .sheet-backdrop { z-index: 1000 !important; }
+  #toolbar { z-index: 1001 !important; }
+  .mobile-fab.reader-active { z-index: 1003 !important; }
+  .back-btn { z-index: 1004 !important; }
+}
