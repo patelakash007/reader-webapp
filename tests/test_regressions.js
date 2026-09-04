@@ -637,6 +637,48 @@ const path = require('node:path');
   assert.strictEqual(startedSpeechAt, 0, 'Should start speech at word index 0 on first click');
   console.log('✓ Reader click handler safeguards against unsupported TTS, active selection, links, and speaks on first click.');
 
+  console.log('\n--- 25. Editor: Empty edits discarded and text limit enforced on save ---');
+  let lastStatusMsg = null;
+  let lastStatusType = null;
+  const editorUI = {
+    ...mockUI,
+    showStatus(msg, type) {
+      lastStatusMsg = msg;
+      lastStatusType = type;
+    }
+  };
+  const makeClassList = () => ({ add() {}, remove() {}, contains() { return false; } });
+  const editorContext = createAppContext({
+    readerEditor: { value: '   \n\t  ', hidden: false },
+    readerContent: { hidden: true, textContent: 'Initial content', insertAdjacentHTML() {} },
+    editingBanner: { classList: makeClassList() },
+    editBtn: { setAttribute() {}, classList: makeClassList() }
+  });
+  editorContext.state.currentText = 'Original persistent document';
+  editorContext.state.isEditing = true;
+  const editorReader = createReader(editorContext, {
+    ui: editorUI,
+    parser,
+    tts: mockTTS,
+    getSettings: mockSettings
+  });
+
+  // Saving empty edits
+  editorReader.saveAndExitEditMode();
+  assert.strictEqual(editorContext.state.currentText, 'Original persistent document', 'Original text must be preserved on empty save');
+  assert.strictEqual(editorContext.state.isEditing, false, 'Should exit editing mode on empty cancel');
+  assert(lastStatusMsg && lastStatusMsg.includes('Nothing to save'), `Expected 'Nothing to save' message, got: ${lastStatusMsg}`);
+  assert.strictEqual(lastStatusType, 'info');
+
+  // Saving text exceeding limit
+  editorContext.state.isEditing = true;
+  editorContext.els.readerEditor.value = 'A'.repeat(1_000_001);
+  editorReader.saveAndExitEditMode();
+  assert.strictEqual(editorContext.state.isEditing, true, 'Must remain in editing mode when text exceeds limit');
+  assert(lastStatusMsg && lastStatusMsg.includes('contains too much extracted text'), `Expected limit error, got: ${lastStatusMsg}`);
+  assert.strictEqual(lastStatusType, 'error');
+  console.log('✓ Editor save safely handles empty content and enforces character limits.');
+
   console.log('\n====================================================');
   console.log('ALL REGRESSION TESTS PASSED SUCCESSFULLY');
   console.log('====================================================\n');

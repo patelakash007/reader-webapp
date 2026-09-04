@@ -428,13 +428,27 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
 
   function saveAndExitEditMode(options = {}) {
     if (!state.isEditing) return;
+    const rawValue = els.readerEditor ? (els.readerEditor.value || '') : '';
+    const trimmed = rawValue.trim();
+    if (!trimmed) {
+      cancelEditMode();
+      ui.showStatus('Nothing to save — edits discarded', 'info');
+      return;
+    }
+    try {
+      parser.enforceExtractedTextLimit(rawValue, 'edited text');
+    } catch (err) {
+      ui.showStatus(err && err.message ? err.message : 'Text limit exceeded.', 'error');
+      return;
+    }
+
     if (typeof window !== 'undefined' && window.clearTimeout) {
       window.clearTimeout(runtime.reader.editDebounceTimer);
       runtime.reader.editDebounceTimer = null;
     }
     state.isEditing = false;
+    state.currentText = rawValue;
     if (els.readerEditor) {
-      state.currentText = els.readerEditor.value;
       els.readerEditor.hidden = true;
     }
     if (els.readerContent) els.readerContent.hidden = false;

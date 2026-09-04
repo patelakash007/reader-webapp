@@ -333,6 +333,17 @@ async function runDeepPlaywrightChecks() {
     }));
     assert(editState.currentText.includes('Edited body with bold text.'), 'Edited markdown was not re-rendered.');
     assert(editState.bannerVisible === false, 'Editing banner stayed visible after save.');
+
+    // Test empty editor save -> edits discarded, previous text rendered
+    await expandSettingsSection(page, 'tools');
+    await page.click('#editBtn');
+    await page.locator('#readerEditor').fill('   ');
+    await page.click('#saveEditBannerBtn');
+    assert(await page.isVisible('#readerContent'), 'Reader content must remain visible after empty save');
+    assert(await page.isHidden('#readerEditor'), 'Reader editor must be hidden after empty save');
+    const preservedText = await page.locator('#readerContent').textContent();
+    assert(preservedText.includes('Edited Heading'), 'Previous text must be preserved after empty save');
+
     results.push('Edit and save flow passed.');
 
     const downloadPromise = page.waitForEvent('download');
