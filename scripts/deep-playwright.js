@@ -350,7 +350,8 @@ async function runDeepPlaywrightChecks() {
     await expandSettingsSection(page, 'tools');
     await page.click('#downloadBtn');
     const download = await downloadPromise;
-    assert(download.suggestedFilename() === 'Reader_Export.txt', `Unexpected download file name: ${download.suggestedFilename()}`);
+    const filename = download.suggestedFilename();
+    assert(/^Edited_Heading_\d{4}-\d{2}-\d{2}\.txt$/.test(filename) || filename === 'Reader_Export.txt', `Unexpected download file name: ${filename}`);
     await download.delete();
     results.push('Download flow passed.');
 

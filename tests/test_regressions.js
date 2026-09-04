@@ -8,6 +8,7 @@ const path = require('node:path');
   const parser = await import('../src/parser.mjs');
   const tts = await import('../src/tts.mjs');
   const utils = await import('../src/utils.mjs');
+  const uiModule = await import('../src/ui.mjs');
   const { createAppContext } = await import('../src/context.mjs');
   const { createReader } = await import('../src/reader.mjs');
 
@@ -751,6 +752,80 @@ const path = require('node:path');
   assert.strictEqual(quoteCount, 1, `Expected 1 blockquote, got ${quoteCount}`);
   assert(lazyQuoteHtml.includes('line 1\nlazy continuation line 2') || (lazyQuoteHtml.includes('line 1') && lazyQuoteHtml.includes('lazy continuation line 2')), `Lazy continuation lines should belong to blockquote: ${lazyQuoteHtml}`);
   console.log('✓ CommonMark fidelity preserved across loose lists, setext headings, tilde fences, nested code, tables, and blockquotes.');
+
+  console.log('\n--- 29. UI: Download filename derivation and delayed revocation (F-10) ---');
+  const today = new Date().toISOString().slice(0, 10);
+
+  // 1. Derivation from activeFileName
+  const fn1 = uiModule.deriveDownloadFilename('Text content', 'my-report.markdown');
+  assert.strictEqual(fn1, `my-report_${today}.txt`);
+
+  // 2. Derivation from first heading
+  const fn2 = uiModule.deriveDownloadFilename('# Chapter One: Journey Begins\n\nContent here', '');
+  assert.strictEqual(fn2, `Chapter_One_Journey_Begins_${today}.txt`);
+
+  // 3. Fallback when no heading or activeFileName
+  const fn3 = uiModule.deriveDownloadFilename('Plain paragraph without any headings.', '');
+  assert.strictEqual(fn3, 'Reader_Export.txt');
+
+  const fn4 = uiModule.deriveDownloadFilename('', '');
+  assert.strictEqual(fn4, 'Reader_Export.txt');
+
+  // 4. Delayed revocation logic
+  let listenerRegistered = false;
+  let timeoutRegistered = false;
+  let timeoutMs = 0;
+  global.window = {
+    addEventListener(type) {
+      if (type === 'focus') listenerRegistered = true;
+    },
+    removeEventListener() {},
+    setTimeout(cb, ms) {
+      timeoutRegistered = true;
+      timeoutMs = ms;
+      return 123;
+    },
+    clearTimeout() {}
+  };
+  global.Blob = class { constructor(data) { this.data = data; } };
+  let revokedUrl = null;
+  global.URL = {
+    createObjectURL() {
+      return 'blob:test-123';
+    },
+    revokeObjectURL(url) {
+      revokedUrl = url;
+    }
+  };
+  global.document = {
+    createElement() {
+      return {
+        href: '',
+        download: '',
+        click() {},
+        parentNode: null
+      };
+    },
+    body: {
+      appendChild(node) {
+        node.parentNode = this;
+      },
+      removeChild(node) {
+        node.parentNode = null;
+      }
+    }
+  };
+
+  const dlContext = createAppContext({});
+  dlContext.state.currentText = '# Heading\nBody';
+  const dlUi = uiModule.createUI(dlContext);
+  dlUi.downloadText();
+
+  assert.strictEqual(listenerRegistered, true, 'Window focus listener must be registered for revocation');
+  assert.strictEqual(timeoutRegistered, true, 'Timeout fallback must be scheduled for revocation');
+  assert.strictEqual(timeoutMs, 60000, 'Timeout delay must be 60,000ms');
+  assert.strictEqual(revokedUrl, null, 'URL must not be synchronously revoked on download');
+  console.log('✓ Download filename derived cleanly and URL revocation deferred safely.');
 
   console.log('\n====================================================');
   console.log('ALL REGRESSION TESTS PASSED SUCCESSFULLY');
