@@ -22,44 +22,48 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     if (shouldShowLoader) ui.showLoader('Preparing reader...');
     els.readerContent.textContent = '';
 
-    const lines = text.split('\n');
     const renderer = createMarkdownRenderer(state.smartHeadings);
+    let tokens = [];
+    try {
+      tokens = renderer.tokenize(text);
+    } catch (err) {
+      if (renderId !== runtime.reader.activeRenderId) return;
+      if (shouldShowLoader) ui.hideLoader();
+      ui.showStatus(`Could not render this text safely: ${err && err.message ? err.message : 'Unknown error'}`, 'error');
+      return;
+    }
     let index = 0;
-
-    const flushParts = () => {
-      if (renderId !== runtime.reader.activeRenderId || !els.readerContent) return;
-      const html = renderer.flushParts();
-      if (html) els.readerContent.insertAdjacentHTML('beforeend', html);
-    };
 
     const processChunk = () => {
       if (renderId !== runtime.reader.activeRenderId) return;
       try {
         const deadline = (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()) + 12;
         let charsCount = 0;
-        while (index < lines.length && (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()) < deadline && charsCount < 30000) {
+        const startIndex = index;
+        while (index < tokens.length && (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()) < deadline && charsCount < 30000) {
           if (renderId !== runtime.reader.activeRenderId) return;
-          const line = lines[index];
-          charsCount += line.length;
-          renderer.processLine(line, index);
+          const token = tokens[index];
+          charsCount += (token.raw ? token.raw.length : (token.text ? token.text.length : 0));
           index += 1;
         }
 
-        flushParts();
+        if (index > startIndex) {
+          const chunkTokens = tokens.slice(startIndex, index);
+          chunkTokens.links = tokens.links;
+          const html = renderer.renderTokens(chunkTokens, tokens.links);
+          if (html && renderId === runtime.reader.activeRenderId && els.readerContent) {
+            els.readerContent.insertAdjacentHTML('beforeend', html);
+          }
+        }
         if (renderId !== runtime.reader.activeRenderId) return;
 
-        if (index < lines.length) {
+        if (index < tokens.length) {
           if (typeof window !== 'undefined' && window.requestAnimationFrame) {
             window.requestAnimationFrame(processChunk);
           } else {
             setTimeout(processChunk, 0);
           }
           return;
-        }
-
-        const finalHtml = renderer.finish();
-        if (finalHtml && renderId === runtime.reader.activeRenderId && els.readerContent) {
-          els.readerContent.insertAdjacentHTML('beforeend', finalHtml);
         }
         if (renderId !== runtime.reader.activeRenderId) return;
         applyTextColor();

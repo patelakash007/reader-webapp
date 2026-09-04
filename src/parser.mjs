@@ -116,105 +116,83 @@ export function parseInline(text) {
 
 export function createMarkdownRenderer(smartHeadings = true) {
   const marked = createMarkedInstance();
-  const htmlParts = [];
-  let buffer = [];
-  let startLineIndex = 0;
-  let inCodeBlock = false;
-  let wasPrevEmpty = true;
 
-  function flushBuffer() {
-    if (!buffer.length) return;
-    const blockText = buffer.join('\n');
-    buffer = [];
-    if (!blockText.trim()) return;
+  function tokenize(text) {
+    const tokens = marked.lexer(String(text || ''));
+    let currentLine = 0;
+    const usedHeadingIds = new Set();
 
-    const trimmed = blockText.trim();
-    if (smartHeadings && isSmartHeading(trimmed)) {
-      htmlParts.push(`<h2 id="heading-${startLineIndex}">${escapeHtml(trimmed)}</h2>\n`);
-      return;
-    }
-
-    const tokens = marked.lexer(blockText);
-    let headingCounter = 0;
-    tokens.forEach(token => {
-      if (token.type === 'heading') {
-        token.headingId = headingCounter === 0 ? `heading-${startLineIndex}` : `heading-${startLineIndex}-${headingCounter}`;
-        headingCounter += 1;
-      }
-    });
-    const html = marked.parser(tokens);
-    if (html) htmlParts.push(html);
-  }
-
-  function processLine(rawLine, index) {
-    const trimmed = rawLine.trim();
-
-    if (trimmed.startsWith('```')) {
-      if (inCodeBlock) {
-        buffer.push(rawLine);
-        flushBuffer();
-        inCodeBlock = false;
-        wasPrevEmpty = false;
-        return;
-      } else {
-        flushBuffer();
-        inCodeBlock = true;
-        startLineIndex = index;
-        buffer.push(rawLine);
-        wasPrevEmpty = false;
-        return;
+    function assignHeadingId(token, lineIndex) {
+      if (token.type === 'heading' && !token.headingId) {
+        let id = `heading-${lineIndex}`;
+        if (usedHeadingIds.has(id)) {
+          let counter = 1;
+          while (usedHeadingIds.has(`${id}-${counter}`)) {
+            counter += 1;
+          }
+          id = `${id}-${counter}`;
+        }
+        usedHeadingIds.add(id);
+        token.headingId = id;
       }
     }
 
-    if (inCodeBlock) {
-      buffer.push(rawLine);
-      return;
+    function processTokenList(list, baseLine) {
+      for (const token of list) {
+        const line = baseLine !== undefined ? baseLine : currentLine;
+        if (baseLine === undefined && token.raw) {
+          currentLine += (token.raw.match(/\n/g) || []).length;
+        }
+
+        if (smartHeadings && token.type === 'paragraph' && baseLine === undefined) {
+          const trimmed = token.text ? token.text.trim() : '';
+          if (!token.text.includes('\n') && !token.text.includes('\r') && isSmartHeading(trimmed)) {
+            token.type = 'heading';
+            token.depth = 2;
+          }
+        }
+
+        assignHeadingId(token, line);
+
+        if (token.tokens && token.type !== 'paragraph' && token.type !== 'heading') {
+          processTokenList(token.tokens, line);
+        }
+        if (token.items) {
+          for (const item of token.items) {
+            if (item.tokens) processTokenList(item.tokens, line);
+          }
+        }
+      }
     }
 
-    if (trimmed === '') {
-      flushBuffer();
-      wasPrevEmpty = true;
-      return;
-    }
-
-    if (trimmed === '---' || trimmed === '***') {
-      flushBuffer();
-      htmlParts.push('<hr>\n');
-      wasPrevEmpty = false;
-      return;
-    }
-
-    if (buffer.length === 0) {
-      startLineIndex = index;
-    }
-
-    if (/^#{1,6}\s+/.test(trimmed) || (smartHeadings && wasPrevEmpty && isSmartHeading(trimmed))) {
-      flushBuffer();
-      startLineIndex = index;
-    }
-
-    buffer.push(rawLine);
-    wasPrevEmpty = false;
+    processTokenList(tokens);
+    return tokens;
   }
 
-  function flushParts() {
-    flushBuffer();
-    const html = htmlParts.join('');
-    htmlParts.length = 0;
-    return html;
+  function renderTokens(tokensSlice, links) {
+    if (!tokensSlice || !tokensSlice.length) return '';
+    if (links && !tokensSlice.links) {
+      tokensSlice.links = links;
+    }
+    return marked.parser(tokensSlice);
   }
 
-  function finish() {
-    return flushParts();
+  function render(text) {
+    const tokens = tokenize(text);
+    return renderTokens(tokens, tokens.links);
   }
 
-  return { finish, flushParts, processLine };
+  return {
+    marked,
+    tokenize,
+    renderTokens,
+    render
+  };
 }
 
 export function parseMarkdownToHtml(text, smartHeadings = true) {
   const renderer = createMarkdownRenderer(smartHeadings);
-  String(text || '').split('\n').forEach((line, index) => renderer.processLine(line, index));
-  return renderer.finish();
+  return renderer.render(text);
 }
 
 export function getExtension(fileName) {

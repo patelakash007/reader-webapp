@@ -716,6 +716,42 @@ const path = require('node:path');
   assert.strictEqual(backTestWordCount.textContent, '', 'wordCount text should be emptied when pressing Back');
   console.log('✓ goBack properly frees memory by clearing readerContent and wordCount.');
 
+  console.log('\n--- 28. Markdown: CommonMark fidelity (F-07) ---');
+  // Case 1: loose list should remain a single <ul>
+  const looseListHtml = parser.parseMarkdownToHtml('- a\n\n- b');
+  const ulMatches = looseListHtml.match(/<ul/g) || [];
+  assert.strictEqual(ulMatches.length, 1, `Expected exactly 1 <ul> for loose list, got ${ulMatches.length}`);
+  assert(looseListHtml.includes('<li>') && looseListHtml.includes('a') && looseListHtml.includes('b'));
+
+  // Case 2: Setext heading (Title\n---) should render <h2>
+  const setextHtml = parser.parseMarkdownToHtml('Title\n---');
+  assert(setextHtml.includes('<h2') && setextHtml.includes('Title</h2>'), `Expected <h2> for setext heading, got: ${setextHtml}`);
+  assert(!setextHtml.includes('<hr>'), `Setext heading must not be split into an <hr>`);
+
+  // Case 3: ~~~ fence with blank line inside
+  const tildeFenceHtml = parser.parseMarkdownToHtml('~~~\nfirst line\n\nsecond line\n~~~');
+  const preMatches = tildeFenceHtml.match(/<pre>/g) || [];
+  assert.strictEqual(preMatches.length, 1, `Expected 1 <pre> block for tilde fence with blank line, got ${preMatches.length}`);
+  assert(tildeFenceHtml.includes('first line\n\nsecond line'), 'Fence content with blank line must be preserved intact');
+
+  // Case 4: Indented code in list item
+  const indentedCodeInList = '- item 1\n\n    ```\n    indented code\n    ```';
+  const listCodeHtml = parser.parseMarkdownToHtml(indentedCodeInList);
+  assert(listCodeHtml.includes('<ul>') && listCodeHtml.includes('<li>') && listCodeHtml.includes('<code>indented code'), `Expected indented code inside list item, got: ${listCodeHtml}`);
+
+  // Case 5: GFM table followed by paragraph
+  const tableMd = '| Head A | Head B |\n| --- | --- |\n| Cell 1 | Cell 2 |\n\nFollowing paragraph text.';
+  const tableHtml = parser.parseMarkdownToHtml(tableMd);
+  assert(tableHtml.includes('<table>') && tableHtml.includes('Cell 1') && tableHtml.includes('<p>Following paragraph text.</p>'), `Table and paragraph should parse correctly: ${tableHtml}`);
+
+  // Case 6: Blockquote with lazy continuation
+  const lazyQuoteMd = '> line 1\nlazy continuation line 2';
+  const lazyQuoteHtml = parser.parseMarkdownToHtml(lazyQuoteMd);
+  const quoteCount = (lazyQuoteHtml.match(/<blockquote>/g) || []).length;
+  assert.strictEqual(quoteCount, 1, `Expected 1 blockquote, got ${quoteCount}`);
+  assert(lazyQuoteHtml.includes('line 1\nlazy continuation line 2') || (lazyQuoteHtml.includes('line 1') && lazyQuoteHtml.includes('lazy continuation line 2')), `Lazy continuation lines should belong to blockquote: ${lazyQuoteHtml}`);
+  console.log('✓ CommonMark fidelity preserved across loose lists, setext headings, tilde fences, nested code, tables, and blockquotes.');
+
   console.log('\n====================================================');
   console.log('ALL REGRESSION TESTS PASSED SUCCESSFULLY');
   console.log('====================================================\n');

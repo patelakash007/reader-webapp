@@ -289,15 +289,20 @@ export function createTTS(context, { ui }) {
     if (!span) return;
     span.classList.add('active');
     const rect = typeof span.getBoundingClientRect === 'function' ? span.getBoundingClientRect() : null;
-    const viewportHeight = typeof window !== 'undefined' ? (window.innerHeight || document.documentElement.clientHeight || 800) : 800;
-    const topComfort = 80;
-    const bottomComfort = viewportHeight - 100;
-    const needsScroll = !rect || rect.top < topComfort || rect.bottom > bottomComfort;
-    if (needsScroll) {
-      const rate = parseFloat(els.voiceRateInput ? els.voiceRateInput.value : '1.0') || 1.0;
-      const scrollBehavior = rate > 1.5 ? 'auto' : 'smooth';
+    if (rect) {
+      const viewportHeight = typeof window !== 'undefined' ? (window.innerHeight || 800) : 800;
+      if (rect.top < 80 || rect.bottom > (viewportHeight - 100)) {
+        const rate = els.voiceRateInput ? (parseFloat(els.voiceRateInput.value) || 1.0) : 1.0;
+        const scrollBehavior = rate > 1.5 ? 'auto' : 'smooth';
+        try {
+          span.scrollIntoView({ block: 'nearest', behavior: scrollBehavior });
+        } catch (err) {
+          if (typeof span.scrollIntoView === 'function') span.scrollIntoView();
+        }
+      }
+    } else {
       try {
-        span.scrollIntoView({ block: 'nearest', behavior: scrollBehavior });
+        span.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       } catch (err) {
         if (typeof span.scrollIntoView === 'function') span.scrollIntoView();
       }
