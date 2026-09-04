@@ -287,14 +287,28 @@ Run:
 npm test
 ```
 
-This runs syntax validation for `script.js` and every `src/*.mjs` module, PWA validation, production-import unit tests, and the empirical stress suite. Browser checks remain explicit:
+This runs JavaScript syntax and import validation across `src/`, `scripts/`, and `tests/`, PWA manifest and app shell integrity checks, production-import unit and regression tests (including `parser.handleFile` format handling), and the empirical stress suite.
+
+**What `npm test` covers:**
+- JavaScript syntax and ESM import/export resolution across all codebase files.
+- PWA manifest metadata, icons, and service worker shell consistency.
+- Headless unit and regression tests (file handling, chunking, sanitization, TTS state machine, settings presets).
+- Large document parsing stress tests.
+
+**What `npm test` does NOT cover (requires browser automation):**
+- Real browser DOM rendering, layout styling, and CSS visibility states.
+- Real user pointer and drag-and-drop interaction events.
+- Live Web Speech API synthesis audio playback in browser runtimes.
+- Browser-initiated file downloads and live Service Worker lifecycle caching across page reloads.
+
+These browser interactions are verified via Playwright:
 
 ```bash
 npm run test:smoke
 npm run test:deep
 ```
 
-If Playwright is unavailable, `npm run test:smoke` reports the skip reason and falls back to the Chromium-only smoke path.
+In CI, both `test:smoke` and `test:deep` run on Ubuntu with Chromium to guarantee browser-level regression coverage before merges. If Playwright is unavailable locally, `npm run test:smoke` reports the skip reason and falls back to the Chromium-only smoke path.
 
 ### Manual testing checklist
 
