@@ -508,6 +508,63 @@ const path = require('node:path');
     console.log('✓ DOCX file not found in parent, skipping real file check.');
   }
 
+  console.log('\n--- 23. File Loading: parser.handleFile with valid .txt and unsupported format ---');
+  if (typeof global.FileReader === 'undefined') {
+    global.FileReader = class FakeFileReader {
+      readAsText(file) {
+        setTimeout(() => {
+          if (this.onload) this.onload({ target: { result: file._content || '' } });
+        }, 0);
+      }
+      readAsArrayBuffer(file) {
+        setTimeout(() => {
+          if (this.onload) this.onload({ target: { result: file._buffer || new ArrayBuffer(0) } });
+        }, 0);
+      }
+    };
+  }
+  let loadedText = null;
+  let statusReported = null;
+  let statusType = null;
+  const fileTestUI = {
+    ...mockUI,
+    showStatus(msg, type) {
+      statusReported = msg;
+      statusType = type;
+    }
+  };
+  const fileContext = createAppContext();
+  const fileParserInstance = parser.createParser(fileContext, {
+    ui: fileTestUI,
+    onTextLoaded(t) {
+      loadedText = t;
+    }
+  });
+
+  // Valid .txt file
+  const txtEvent = {
+    target: {
+      files: [{ name: 'notes.txt', size: 12, _content: 'Hello World!' }],
+      value: 'notes.txt'
+    }
+  };
+  await fileParserInstance.handleFile(txtEvent);
+  assert.strictEqual(loadedText, 'Hello World!', `Expected onTextLoaded to receive text content, got: ${loadedText}`);
+  assert.strictEqual(txtEvent.target.value, '', 'Input target value should be reset');
+
+  // Unsupported .exe file
+  const exeEvent = {
+    target: {
+      files: [{ name: 'malware.exe', size: 100 }],
+      value: 'malware.exe'
+    }
+  };
+  await fileParserInstance.handleFile(exeEvent);
+  assert(statusReported && statusReported.includes('Unsupported format'), `Expected Unsupported format status, got: ${statusReported}`);
+  assert.strictEqual(statusType, 'error', 'Expected error status type');
+  assert.strictEqual(exeEvent.target.value, '', 'Input target value should be reset for unsupported files');
+  console.log('✓ parser.handleFile successfully loaded .txt and rejected unsupported .exe format.');
+
   console.log('\n====================================================');
   console.log('ALL REGRESSION TESTS PASSED SUCCESSFULLY');
   console.log('====================================================\n');

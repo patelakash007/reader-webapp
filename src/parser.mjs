@@ -8,6 +8,7 @@ import {
 import {
   assertActiveFileRead,
   beginFileRead,
+  cancelPendingFileRead,
   cancelPendingRender,
   formatError,
   escapeHtml,
