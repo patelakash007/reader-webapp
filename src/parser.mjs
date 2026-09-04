@@ -14,6 +14,7 @@ import {
   isActiveFileRead,
   isStaleReadError
 } from './utils.mjs';
+import { Marked } from '../vendor/marked.esm.mjs';
 
 export { escapeHtml } from './utils.mjs';
 
@@ -34,11 +35,13 @@ function decodeHtmlAttributeValue(value) {
 }
 
 export function normalizeSafeLinkHref(escapedUrl) {
+  if (!escapedUrl || typeof escapedUrl !== 'string') return null;
   const cleanUrl = decodeHtmlAttributeValue(escapedUrl).trim();
   if (!cleanUrl || /[\u0000-\u001F\u007F]/.test(cleanUrl)) return null;
 
   const unsafeSchemeRegex = /^(javascript|data|vbscript|file|blob):/i;
   const safeSchemeRegex = /^(https?|ftp|mailto):/i;
+  if (cleanUrl.startsWith('//')) return null;
   const isRootRelative = cleanUrl.startsWith('/') && !cleanUrl.startsWith('//');
   const isSafe = (safeSchemeRegex.test(cleanUrl) || isRootRelative || cleanUrl.startsWith('#')) && !unsafeSchemeRegex.test(cleanUrl);
   if (!isSafe) return null;
@@ -50,156 +53,160 @@ export function normalizeSafeLinkHref(escapedUrl) {
   }
 }
 
-function parseEmphasis(escapedText) {
-  return escapedText
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/\b_([^_]+)_\b/g, '<em>$1</em>');
+export function isSmartHeading(trimmed) {
+  if (typeof trimmed !== 'string' || trimmed.length < 3 || trimmed.length > 55) return false;
+  if (!/^[A-Z][A-Z0-9\s:—–-]{2,55}[A-Z0-9]$/.test(trimmed)) return false;
+  if (/^[A-Z0-9]{2,6}(?:\s+(?:AND|OR|&|\/)\s+[A-Z0-9]{2,6})+$/i.test(trimmed)) return false;
+  if (/[.!?]$/.test(trimmed)) return false;
+  if (/^(?:PLEASE|NOTE|WARNING|CAUTION|DO NOT|NOTICE)\b/i.test(trimmed)) return false;
+  const words = trimmed.split(/\s+/);
+  return words.some(w => w.length >= 4) || words.length >= 2;
 }
 
-function restoreInlineTokens(text, tokens, prefix) {
-  return text.replace(new RegExp(`\\uE000${prefix}(\\d+)\\uE001`, 'g'), (match, index) => tokens[Number(index)] || match);
+export function createMarkedInstance() {
+  const instance = new Marked();
+  instance.use({
+    gfm: true,
+    breaks: false,
+    renderer: {
+      heading(token) {
+        const id = token.headingId !== undefined ? token.headingId : `heading-${Math.random().toString(36).slice(2, 11)}`;
+        const content = this.parser.parseInline(token.tokens);
+        return `<h${token.depth} id="${id}">${content}</h${token.depth}>\n`;
+      },
+      link(token) {
+        const safeHref = normalizeSafeLinkHref(token.href);
+        const text = this.parser.parseInline(token.tokens);
+        if (!safeHref) return text;
+        return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+      },
+      image(token) {
+        return `[Image: ${escapeHtml(token.text || 'image')}]`;
+      },
+      html(token) {
+        return escapeHtml(token.text);
+      },
+      list(token) {
+        const tag = token.ordered ? 'ol' : 'ul';
+        const startAttr = token.ordered && token.start !== 1 && token.start !== '' && token.start !== undefined
+          ? ` start="${token.start}"`
+          : '';
+        let body = '';
+        for (const item of token.items) {
+          body += this.listitem(item);
+        }
+        return `<${tag}${startAttr}>${body}</${tag}>\n`;
+      },
+      listitem(item) {
+        return `<li>${this.parser.parse(item.tokens, !!item.loose)}</li>`;
+      }
+    }
+  });
+  return instance;
 }
 
-export function parseInline(escapedText) {
-  if (!escapedText) return '';
+const defaultMarkedInstance = createMarkedInstance();
 
-  const codeTokens = [];
-  const codeProtected = escapedText.replace(/`([^`]+)`/g, (match, codeText) => {
-    const token = `\uE000CODE${codeTokens.length}\uE001`;
-    codeTokens.push(`<code>${codeText}</code>`);
-    return token;
-  });
-
-  const linkTokens = [];
-  const linksProtected = codeProtected.replace(/\[([^\]]+)\]\(((?:[^()\\]|\\.|\([^()]*\))+)\)/g, (match, text, url) => {
-    const parsedText = parseEmphasis(text);
-    const href = normalizeSafeLinkHref(url);
-    if (!href) return parsedText;
-
-    const token = `\uE000LINK${linkTokens.length}\uE001`;
-    linkTokens.push(`<a href="${href}" target="_blank" rel="noopener noreferrer">${parsedText}</a>`);
-    return token;
-  });
-
-  const emphasized = parseEmphasis(linksProtected);
-  return restoreInlineTokens(restoreInlineTokens(emphasized, linkTokens, 'LINK'), codeTokens, 'CODE');
+export function parseInline(text) {
+  if (!text) return '';
+  return defaultMarkedInstance.parseInline(String(text));
 }
 
 export function createMarkdownRenderer(smartHeadings = true) {
+  const marked = createMarkedInstance();
   const htmlParts = [];
-  let inList = false;
-  let listType = null;
-  let listBuffer = '';
-  let wasPreviousLineEmpty = true;
+  let buffer = [];
+  let startLineIndex = 0;
   let inCodeBlock = false;
-  let codeBuffer = '';
+  let wasPrevEmpty = true;
 
-  const pushHtml = html => htmlParts.push(html);
-  const flushParts = () => {
-    const html = htmlParts.join('');
-    htmlParts.length = 0;
-    return html;
-  };
-  const flushList = () => {
-    if (!inList) return;
-    pushHtml(listType === 'ul' ? `<ul>${listBuffer}</ul>` : `<ol>${listBuffer}</ol>`);
-    inList = false;
-    listType = null;
-    listBuffer = '';
-  };
+  function flushBuffer() {
+    if (!buffer.length) return;
+    const blockText = buffer.join('\n');
+    buffer = [];
+    if (!blockText.trim()) return;
 
-  function processLine(rawLine, index) {
-    const line = rawLine.trimEnd();
-    const trimmed = line.trim();
-
-    if (trimmed.startsWith('```')) {
-      if (inCodeBlock) {
-        flushList();
-        pushHtml(`<pre><code>${escapeHtml(codeBuffer.trimEnd())}</code></pre>`);
-        inCodeBlock = false;
-        codeBuffer = '';
-      } else {
-        flushList();
-        inCodeBlock = true;
-      }
-      wasPreviousLineEmpty = false;
+    const trimmed = blockText.trim();
+    if (smartHeadings && isSmartHeading(trimmed)) {
+      htmlParts.push(`<h2 id="heading-${startLineIndex}">${escapeHtml(trimmed)}</h2>\n`);
       return;
     }
 
+    const tokens = marked.lexer(blockText);
+    let headingCounter = 0;
+    tokens.forEach(token => {
+      if (token.type === 'heading') {
+        token.headingId = headingCounter === 0 ? `heading-${startLineIndex}` : `heading-${startLineIndex}-${headingCounter}`;
+        headingCounter += 1;
+      }
+    });
+    const html = marked.parser(tokens);
+    if (html) htmlParts.push(html);
+  }
+
+  function processLine(rawLine, index) {
+    const trimmed = rawLine.trim();
+
+    if (trimmed.startsWith('```')) {
+      if (inCodeBlock) {
+        buffer.push(rawLine);
+        flushBuffer();
+        inCodeBlock = false;
+        wasPrevEmpty = false;
+        return;
+      } else {
+        flushBuffer();
+        inCodeBlock = true;
+        startLineIndex = index;
+        buffer.push(rawLine);
+        wasPrevEmpty = false;
+        return;
+      }
+    }
+
     if (inCodeBlock) {
-      codeBuffer += `${rawLine}\n`;
+      buffer.push(rawLine);
       return;
     }
 
     if (trimmed === '') {
-      flushList();
-      wasPreviousLineEmpty = true;
+      flushBuffer();
+      wasPrevEmpty = true;
       return;
     }
 
     if (trimmed === '---' || trimmed === '***') {
-      flushList();
-      pushHtml('<hr>');
-      wasPreviousLineEmpty = false;
+      flushBuffer();
+      htmlParts.push('<hr>\n');
+      wasPrevEmpty = false;
       return;
     }
 
-    const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
-    if (headingMatch) {
-      flushList();
-      const level = Math.min(headingMatch[1].length, 3);
-      pushHtml(`<h${level} id="heading-${index}">${parseInline(escapeHtml(headingMatch[2]))}</h${level}>`);
-      wasPreviousLineEmpty = false;
-      return;
+    if (buffer.length === 0) {
+      startLineIndex = index;
     }
 
-    if (smartHeadings && wasPreviousLineEmpty && /^[A-Z][A-Z0-9\s]{2,40}[A-Z0-9]$/.test(trimmed) && trimmed.length < 50) {
-      flushList();
-      pushHtml(`<h2 id="heading-${index}">${escapeHtml(trimmed)}</h2>`);
-      wasPreviousLineEmpty = false;
-      return;
+    if (/^#{1,6}\s+/.test(trimmed) || (smartHeadings && wasPrevEmpty && isSmartHeading(trimmed))) {
+      flushBuffer();
+      startLineIndex = index;
     }
 
-    if (/^[-\u2022\*]\s+/.test(trimmed)) {
-      if (!inList || listType !== 'ul') flushList();
-      inList = true;
-      listType = 'ul';
-      listBuffer += `<li>${parseInline(escapeHtml(trimmed.replace(/^[-\u2022\*]\s+/, '')))}</li>`;
-      wasPreviousLineEmpty = false;
-      return;
-    }
-
-    if (/^\d+[.)]\s+/.test(trimmed)) {
-      if (!inList || listType !== 'ol') flushList();
-      inList = true;
-      listType = 'ol';
-      listBuffer += `<li>${parseInline(escapeHtml(trimmed.replace(/^\d+[.)]\s+/, '')))}</li>`;
-      wasPreviousLineEmpty = false;
-      return;
-    }
-
-    if (trimmed.startsWith('> ')) {
-      flushList();
-      pushHtml(`<blockquote>${parseInline(escapeHtml(trimmed.substring(2)))}</blockquote>`);
-      wasPreviousLineEmpty = false;
-      return;
-    }
-
-    flushList();
-    pushHtml(`<p>${parseInline(escapeHtml(line))}</p>`);
-    wasPreviousLineEmpty = false;
+    buffer.push(rawLine);
+    wasPrevEmpty = false;
   }
 
-  return {
-    finish() {
-      flushList();
-      if (inCodeBlock) pushHtml(`<pre><code>${escapeHtml(codeBuffer.trimEnd())}</code></pre>`);
-      return flushParts();
-    },
-    flushParts,
-    processLine
-  };
+  function flushParts() {
+    flushBuffer();
+    const html = htmlParts.join('');
+    htmlParts.length = 0;
+    return html;
+  }
+
+  function finish() {
+    return flushParts();
+  }
+
+  return { finish, flushParts, processLine };
 }
 
 export function parseMarkdownToHtml(text, smartHeadings = true) {
@@ -279,46 +286,80 @@ export function createParser(context, { ui, onTextLoaded }) {
   const { runtime } = context;
   const libraries = {
     pdf: {
+      esm: '../vendor/pdf.min.mjs',
+      worker: '../vendor/pdf.worker.min.mjs',
       src: 'vendor/pdf.min.js',
-      check: () => window.pdfjsLib,
+      workerLegacy: 'vendor/pdf.worker.min.js',
+      check: () => (typeof window !== 'undefined' ? window.pdfjsLib : null),
       onLoad: () => {
-        if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
+        if (typeof window !== 'undefined' && window.pdfjsLib) {
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
+        }
       }
     },
     mammoth: {
       src: 'vendor/mammoth.browser.min.js',
-      check: () => window.mammoth
+      check: () => (typeof window !== 'undefined' ? window.mammoth : null)
     }
   };
 
-  function loadLibrary(name) {
+  async function loadLibrary(name) {
     if (runtime.file.loadedLibraries.has(name)) return runtime.file.loadedLibraries.get(name);
-    const promise = new Promise((resolve, reject) => {
+    const promise = (async () => {
       const lib = libraries[name];
-      if (!lib) {
-        reject(new Error(`Unknown library: ${name}`));
-        return;
-      }
-      if (lib.check()) {
+      if (!lib) throw new Error(`Unknown library: ${name}`);
+
+      if (lib.check && lib.check()) {
         if (lib.onLoad) lib.onLoad();
-        resolve(lib.check());
-        return;
+        return lib.check();
       }
 
-      const script = document.createElement('script');
-      script.src = lib.src;
-      script.onload = () => {
+      if (name === 'pdf' && lib.esm) {
         try {
+          const mod = await import(lib.esm);
+          const pdfLib = mod && (mod.default || mod);
+          if (pdfLib && pdfLib.getDocument) {
+            if (pdfLib.GlobalWorkerOptions) {
+              pdfLib.GlobalWorkerOptions.workerSrc = new URL(lib.worker, import.meta.url).href;
+            }
+            return pdfLib;
+          }
+        } catch (err) {}
+      }
+
+      if (name === 'mammoth' && typeof window === 'undefined') {
+        try {
+          const mod = await import('../vendor/mammoth.browser.min.js');
+          const mammothLib = mod && (mod.default || mod);
+          if (mammothLib && mammothLib.extractRawText) return mammothLib;
+        } catch (err) {}
+      }
+
+      return new Promise((resolve, reject) => {
+        if (lib.check && lib.check()) {
           if (lib.onLoad) lib.onLoad();
-          if (lib.check()) resolve(lib.check());
-          else reject(new Error(`Library ${name} loaded but could not be initialized.`));
-        } catch (err) {
-          reject(err);
+          resolve(lib.check());
+          return;
         }
-      };
-      script.onerror = () => reject(new Error(`Failed to load local parser library ${name} from ${lib.src}. Check that the vendor file is available.`));
-      document.head.appendChild(script);
-    });
+        if (typeof document === 'undefined') {
+          reject(new Error(`Cannot load script ${lib.src} in headless environment.`));
+          return;
+        }
+        const script = document.createElement('script');
+        script.src = lib.src;
+        script.onload = () => {
+          try {
+            if (lib.onLoad) lib.onLoad();
+            if (lib.check && lib.check()) resolve(lib.check());
+            else reject(new Error(`Library ${name} loaded but could not be initialized.`));
+          } catch (err) {
+            reject(err);
+          }
+        };
+        script.onerror = () => reject(new Error(`Failed to load local parser library ${name} from ${lib.src}. Check that the vendor file is available.`));
+        document.head.appendChild(script);
+      });
+    })();
 
     runtime.file.loadedLibraries.set(name, promise);
     promise.catch(() => runtime.file.loadedLibraries.delete(name));
@@ -338,6 +379,7 @@ export function createParser(context, { ui, onTextLoaded }) {
 
     const typedArray = new Uint8Array(arrayBuffer);
     const loadingTask = pdfLib.getDocument({ data: typedArray });
+    runtime.file.activeLoadingTask = loadingTask;
     let pdf = null;
     try {
       pdf = await loadingTask.promise;
@@ -371,6 +413,7 @@ export function createParser(context, { ui, onTextLoaded }) {
       }
       return pages.join('\n\n').trim();
     } finally {
+      runtime.file.activeLoadingTask = null;
       if (pdf && typeof pdf.cleanup === 'function') {
         try { pdf.cleanup(); } catch (err) { console.warn('PDF cleanup failed.', err); }
       }
@@ -427,6 +470,7 @@ export function createParser(context, { ui, onTextLoaded }) {
     if (!file) return;
 
     const extension = getExtension(file.name);
+    cancelPendingFileRead(context);
     const readToken = beginFileRead(context);
     cancelPendingRender(context);
     ui.clearStatus();

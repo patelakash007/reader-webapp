@@ -26,7 +26,10 @@
   
   <div class="editing-banner" id="editingBanner">
     <span>You are in editing mode. Changes stay only in this open page session.</span>
-    <button id="saveEditBannerBtn" type="button">Save &amp; Exit</button>
+    <div class="editing-banner-actions">
+      <button id="cancelEditBannerBtn" class="btn-banner-cancel" type="button">Cancel</button>
+      <button id="saveEditBannerBtn" type="button">Save &amp; Exit</button>
+    </div>
   </div>
 
   <button class="mobile-fab" id="mobileFab" type="button" aria-label="Open Reading Settings" aria-controls="toolbar" aria-expanded="false"><span aria-hidden="true">&#x1F39B;&#xFE0F;</span></button>
@@ -206,6 +209,7 @@
 
     <!-- Semantic article element for reader focus -->
     <article class="reader-content fs-medium" id="readerContent"></article>
+    <textarea class="reader-editor fs-medium" id="readerEditor" aria-label="Edit raw document text" spellcheck="false" hidden></textarea>
     <div class="wordcount" id="wordCount"></div>
     <div class="status-message reader-status-message" id="readerStatusMessage" role="status" aria-live="polite"></div>
     <button id="focusRestore" type="button" title="Show UI" aria-label="Show UI"><span aria-hidden="true">&#8853;</span></button>

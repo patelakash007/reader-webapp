@@ -51,6 +51,8 @@ export function init(documentObject = document) {
   });
   context.onSmartHeadingsChanged = () => {
     if (!context.state.currentText || !els.readerView || !els.readerView.classList.contains('active') || context.state.isEditing) return;
+    if (tts && typeof tts.invalidateTokenization === 'function') tts.invalidateTokenization();
+    else if (tts.getSession().isSpeaking) tts.stopTTS();
     const currentScroll = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
     reader.renderTextAsync(context.state.currentText, () => {
       reader.scheduleWordCountUpdate();
@@ -100,6 +102,9 @@ export function init(documentObject = document) {
       els.scrollSpeedInput.value = next;
       context.runtime.autoScroll.speed = next;
       if (els.scrollSpeedVal) els.scrollSpeedVal.textContent = `${(next / 0.04).toFixed(1)}x`;
+    });
+    els.scrollSpeedInput.addEventListener('change', () => {
+      const next = clampNumber(els.scrollSpeedInput.value, 0.04, 0.01, 0.2);
       ui.announceLive(`Auto-scroll speed changed to ${(next / 0.04).toFixed(1)}x.`);
     });
   }

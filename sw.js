@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'reader-webapp-shell-v6';
+const CACHE_NAME = 'reader-webapp-shell-v7';
 const APP_SHELL = [
   './',
   './index.html',
@@ -18,6 +18,9 @@ const APP_SHELL = [
   './src/ui.mjs',
   './src/utils.mjs',
   './manifest.webmanifest',
+  './vendor/marked.esm.mjs',
+  './vendor/pdf.min.mjs',
+  './vendor/pdf.worker.min.mjs',
   './vendor/pdf.min.js',
   './vendor/pdf.worker.min.js',
   './vendor/mammoth.browser.min.js',
@@ -36,6 +39,14 @@ const CANONICAL_NAVIGATION_URLS = new Set([ROOT_URL, INDEX_URL]);
 function getRequestUrl(request) {
   const url = new URL(request.url);
   url.hash = '';
+  const withoutSearch = new URL(url.href);
+  withoutSearch.search = '';
+  if (withoutSearch.href === ROOT_URL_WITHOUT_TRAILING_SLASH || withoutSearch.href === ROOT_URL) {
+    return ROOT_URL;
+  }
+  if (withoutSearch.href === INDEX_URL) {
+    return INDEX_URL;
+  }
   if (url.href === ROOT_URL_WITHOUT_TRAILING_SLASH) return ROOT_URL;
   return url.href;
 }
@@ -79,6 +90,11 @@ async function cacheCanonicalNavigation(cache, request, response) {
 }
 
 async function navigationResponse(request, event) {
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin || !url.href.startsWith(self.registration.scope)) {
+    return fetch(request);
+  }
+
   const cache = await caches.open(CACHE_NAME);
 
   try {
@@ -138,7 +154,10 @@ self.addEventListener('fetch', event => {
   const { request } = event;
 
   if (request.mode === 'navigate') {
-    event.respondWith(navigationResponse(request, event));
+    const url = new URL(request.url);
+    if (url.origin === self.location.origin && url.href.startsWith(self.registration.scope)) {
+      event.respondWith(navigationResponse(request, event));
+    }
     return;
   }
 

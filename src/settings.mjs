@@ -158,6 +158,10 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
     const nextSize = VALID_SIZES.has(size) ? size : 'medium';
     els.readerContent.classList.remove('fs-small', 'fs-medium', 'fs-large', 'fs-xl');
     els.readerContent.classList.add(`fs-${nextSize}`);
+    if (els.readerEditor) {
+      els.readerEditor.classList.remove('fs-small', 'fs-medium', 'fs-large', 'fs-xl');
+      els.readerEditor.classList.add(`fs-${nextSize}`);
+    }
     document.querySelectorAll('[data-size]').forEach(button => {
       const active = button.getAttribute('data-size') === nextSize;
       button.classList.toggle('active', active);
@@ -335,6 +339,7 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
     const next = clampNumber(value, 1.85, 1.4, 2.6);
     els.lineHeightInput.value = next;
     if (els.readerContent) els.readerContent.style.lineHeight = next;
+    if (els.readerEditor) els.readerEditor.style.lineHeight = next;
   }
 
   function setLetterSpacing(value) {
@@ -342,14 +347,19 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
     const next = clampNumber(value, -0.015, -0.03, 0.15);
     els.letterSpacingInput.value = next;
     if (els.readerContent) els.readerContent.style.letterSpacing = `${next}em`;
+    if (els.readerEditor) els.readerEditor.style.letterSpacing = `${next}em`;
   }
 
   function updateMarginStyle(value) {
     if (!els.readerContent) return;
     let padding = clampNumber(value, 24, 12, 80);
-    if (window.innerWidth <= 640) padding = Math.min(padding, 24);
+    if (typeof window !== 'undefined' && window.innerWidth <= 640) padding = Math.min(padding, 24);
     els.readerContent.style.paddingLeft = `${padding}px`;
     els.readerContent.style.paddingRight = `${padding}px`;
+    if (els.readerEditor) {
+      els.readerEditor.style.paddingLeft = `${padding}px`;
+      els.readerEditor.style.paddingRight = `${padding}px`;
+    }
   }
 
   function bindEvents() {

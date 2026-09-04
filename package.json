@@ -6,12 +6,13 @@
   "scripts": {
     "test:syntax": "node scripts/check-syntax.js",
     "test:pwa": "node scripts/validate-pwa.js",
-    "test:unit": "node tests/test_reader.js && node tests/test_tts_controller.js",
+    "test:unit": "node tests/test_reader.js && node tests/test_tts_controller.js && node tests/test_regressions.js",
+    "test:regressions": "node tests/test_regressions.js",
     "test:empirical": "node tests/test_empirical_stress.js",
     "test:smoke": "node scripts/smoke-playwright.js",
     "test:deep": "node scripts/deep-playwright.js",
     "test:chromium": "node scripts/smoke-chromium.js",
-    "test": "node scripts/check-syntax.js && node scripts/validate-pwa.js && node tests/test_reader.js && node tests/test_tts_controller.js && node tests/test_empirical_stress.js"
+    "test": "node scripts/check-syntax.js && node scripts/validate-pwa.js && node tests/test_reader.js && node tests/test_tts_controller.js && node tests/test_regressions.js && node tests/test_empirical_stress.js"
   },
   "devDependencies": {
     "playwright-core": "1.60.0"

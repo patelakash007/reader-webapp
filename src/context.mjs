@@ -1,4 +1,5 @@
 import { STATE_IDLE } from './constants.mjs';
+import { isMobileDevice } from './utils.mjs';
 
 export function createAppContext(els) {
   return {
@@ -69,8 +70,7 @@ export function createAppContext(els) {
         synth: typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window
           ? window.speechSynthesis
           : null,
-        isMobile: typeof navigator !== 'undefined' && (/Android/i.test(navigator.userAgent) ||
-          (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches))
+        isMobile: isMobileDevice()
       }
     }
   };

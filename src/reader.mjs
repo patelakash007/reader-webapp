@@ -4,6 +4,8 @@ import { clampNumber, cancelPendingFileRead, cancelPendingRender, getElementTarg
 export function createReader(context, { ui, parser, tts, getSettings }) {
   const { els, state, runtime } = context;
   let initialized = false;
+  let rulerFramePending = false;
+  let scrollProgressPending = false;
 
   function applyTextColor() {
     const settings = getSettings();
@@ -13,79 +15,97 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
   function renderTextAsync(text, onComplete, options = {}) {
     if (!els.readerContent) return;
     const renderId = ++runtime.reader.activeRenderId;
+    if (tts && typeof tts.invalidateTokenization === 'function') {
+      tts.invalidateTokenization();
+    }
     const shouldShowLoader = !options.suppressLoader;
     if (shouldShowLoader) ui.showLoader('Preparing reader...');
     els.readerContent.textContent = '';
 
-    setTimeout(() => {
+    const lines = text.split('\n');
+    const renderer = createMarkdownRenderer(state.smartHeadings);
+    let index = 0;
+
+    const flushParts = () => {
+      if (renderId !== runtime.reader.activeRenderId || !els.readerContent) return;
+      const html = renderer.flushParts();
+      if (html) els.readerContent.insertAdjacentHTML('beforeend', html);
+    };
+
+    const processChunk = () => {
       if (renderId !== runtime.reader.activeRenderId) return;
-      const lines = text.split('\n');
-      const renderer = createMarkdownRenderer(state.smartHeadings);
-      let index = 0;
-
-      const flushParts = () => {
-        if (renderId !== runtime.reader.activeRenderId || !els.readerContent) return;
-        const html = renderer.flushParts();
-        if (html) els.readerContent.insertAdjacentHTML('beforeend', html);
-      };
-
-      const processChunk = () => {
-        if (renderId !== runtime.reader.activeRenderId) return;
-        try {
-          const chunkEnd = Math.min(index + 500, lines.length);
-          for (; index < chunkEnd; index += 1) {
-            if (renderId !== runtime.reader.activeRenderId) return;
-            renderer.processLine(lines[index], index);
-          }
-          flushParts();
+      try {
+        const deadline = (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()) + 12;
+        let charsCount = 0;
+        while (index < lines.length && (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()) < deadline && charsCount < 30000) {
           if (renderId !== runtime.reader.activeRenderId) return;
-          if (index < lines.length) {
-            window.requestAnimationFrame(processChunk);
-            return;
-          }
-
-          const finalHtml = renderer.finish();
-          if (finalHtml && renderId === runtime.reader.activeRenderId && els.readerContent) {
-            els.readerContent.insertAdjacentHTML('beforeend', finalHtml);
-          }
-          if (renderId !== runtime.reader.activeRenderId) return;
-          applyTextColor();
-          tts.tokenize();
-          if (shouldShowLoader) ui.hideLoader();
-          if (onComplete) onComplete();
-        } catch (err) {
-          if (renderId !== runtime.reader.activeRenderId) return;
-          if (shouldShowLoader) ui.hideLoader();
-          ui.showStatus(`Could not render this text safely: ${err && err.message ? err.message : 'Unknown error'}`, 'error');
+          const line = lines[index];
+          charsCount += line.length;
+          renderer.processLine(line, index);
+          index += 1;
         }
-      };
-      processChunk();
-    }, 50);
-  }
 
-  function getReaderTextForCounting() {
-    if (!els.readerContent) return '';
-    if (state.isEditing) return els.readerContent.textContent || '';
-    const blocks = els.readerContent.querySelectorAll('h1, h2, h3, p, li, blockquote, pre');
-    if (!blocks.length) return els.readerContent.innerText || els.readerContent.textContent || '';
-    return Array.from(blocks)
-      .map(block => (block.textContent || '').trim())
-      .filter(Boolean)
-      .join(' ');
+        flushParts();
+        if (renderId !== runtime.reader.activeRenderId) return;
+
+        if (index < lines.length) {
+          if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+            window.requestAnimationFrame(processChunk);
+          } else {
+            setTimeout(processChunk, 0);
+          }
+          return;
+        }
+
+        const finalHtml = renderer.finish();
+        if (finalHtml && renderId === runtime.reader.activeRenderId && els.readerContent) {
+          els.readerContent.insertAdjacentHTML('beforeend', finalHtml);
+        }
+        if (renderId !== runtime.reader.activeRenderId) return;
+        applyTextColor();
+        if (tts && typeof tts.invalidateTokenization === 'function') {
+          tts.invalidateTokenization();
+        }
+        // Lazy tokenization: TTS tokenization runs on-demand when TTS starts, not synchronously on initial render
+        if (shouldShowLoader) ui.hideLoader();
+        if (onComplete && renderId === runtime.reader.activeRenderId) onComplete();
+      } catch (err) {
+        if (renderId !== runtime.reader.activeRenderId) return;
+        if (shouldShowLoader) ui.hideLoader();
+        ui.showStatus(`Could not render this text safely: ${err && err.message ? err.message : 'Unknown error'}`, 'error');
+      }
+    };
+
+    if (typeof setTimeout !== 'undefined') {
+      setTimeout(() => {
+        if (renderId !== runtime.reader.activeRenderId) return;
+        processChunk();
+      }, 10);
+    } else {
+      processChunk();
+    }
   }
 
   function updateWordCount() {
-    if (!els.readerContent || !els.wordCount) return;
-    const text = getReaderTextForCounting();
-    const words = text.trim().split(/\s+/).filter(word => word.length > 0).length;
+    if (!els.wordCount) return;
+    const text = state.isEditing && els.readerEditor
+      ? els.readerEditor.value
+      : (state.currentText || (els.readerContent ? els.readerContent.textContent : ''));
+    let words = 0;
+    const re = /\S+/g;
+    while (re.exec(text) !== null) words += 1;
     const minutes = Math.ceil(words / 238);
     const timeString = words < 238 ? '< 1 min read' : `~${minutes} min read`;
     els.wordCount.textContent = `${words.toLocaleString()} words · ${timeString}`;
   }
 
   function scheduleWordCountUpdate() {
-    window.clearTimeout(state.wordCountTimer);
-    state.wordCountTimer = window.setTimeout(updateWordCount, 0);
+    if (typeof window !== 'undefined' && window.clearTimeout) {
+      window.clearTimeout(state.wordCountTimer);
+      state.wordCountTimer = window.setTimeout(updateWordCount, 0);
+    } else {
+      updateWordCount();
+    }
   }
 
   function setRulerActive(active, options = {}) {
@@ -105,21 +125,44 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     }
   }
 
+  let lastRulerTarget = null;
+  let lastRulerRect = null;
+  let lastRulerScrollTop = 0;
+
   function updateRulerPosition(event) {
-    if (!runtime.reader.isRulerActive || !els.readingRuler || !els.readerContent) return;
+    if (!runtime.reader.isRulerActive || !els.readingRuler || !els.readerContent || rulerFramePending) return;
     const target = getElementTarget(event.target);
-    const scrollTop = getScrollTop();
-    if (target && els.readerContent.contains(target) &&
-      (target.tagName === 'P' || target.tagName === 'LI' || target.tagName === 'H1' || target.tagName === 'H2' || target.tagName === 'H3' || target.tagName === 'BLOCKQUOTE' || target.closest('p, li, h1, h2, h3, blockquote'))) {
-      const textContainer = target.closest('p, li, h1, h2, h3, blockquote') || target;
-      const rect = textContainer.getBoundingClientRect();
-      const top = rect.top + scrollTop;
-      els.readingRuler.style.height = `${rect.height + 4}px`;
-      els.readingRuler.style.transform = `translate3d(0, ${top - 2}px, 0)`;
-    } else if (event.pageY) {
-      const y = event.pageY - 14;
-      els.readingRuler.style.height = '28px';
-      els.readingRuler.style.transform = `translate3d(0, ${y}px, 0)`;
+    const pageY = event.pageY || (event.touches && event.touches[0] ? event.touches[0].pageY : null);
+    rulerFramePending = true;
+
+    const executeUpdate = () => {
+      rulerFramePending = false;
+      if (!runtime.reader.isRulerActive || !els.readingRuler || !els.readerContent) return;
+      const scrollTop = getScrollTop();
+      if (target && els.readerContent.contains(target) &&
+        (target.tagName === 'P' || target.tagName === 'LI' || target.tagName === 'H1' || target.tagName === 'H2' || target.tagName === 'H3' || target.tagName === 'H4' || target.tagName === 'H5' || target.tagName === 'H6' || target.tagName === 'BLOCKQUOTE' || target.closest('p, li, h1, h2, h3, h4, h5, h6, blockquote'))) {
+        const textContainer = target.closest('p, li, h1, h2, h3, h4, h5, h6, blockquote') || target;
+        if (textContainer !== lastRulerTarget || scrollTop !== lastRulerScrollTop || !lastRulerRect) {
+          lastRulerTarget = textContainer;
+          lastRulerScrollTop = scrollTop;
+          lastRulerRect = textContainer.getBoundingClientRect();
+        }
+        const top = lastRulerRect.top + scrollTop;
+        els.readingRuler.style.height = `${lastRulerRect.height + 4}px`;
+        els.readingRuler.style.transform = `translate3d(0, ${top - 2}px, 0)`;
+      } else if (pageY) {
+        lastRulerTarget = null;
+        lastRulerRect = null;
+        const y = pageY - 14;
+        els.readingRuler.style.height = '28px';
+        els.readingRuler.style.transform = `translate3d(0, ${y}px, 0)`;
+      }
+    };
+
+    if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+      window.requestAnimationFrame(executeUpdate);
+    } else {
+      executeUpdate();
     }
   }
 
@@ -132,13 +175,14 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     autoScroll.accumulator += deltaTime * autoScroll.speed;
     if (autoScroll.accumulator >= 1) {
       const pixelsToScroll = Math.floor(autoScroll.accumulator);
-      window.scrollBy(0, pixelsToScroll);
+      if (typeof window !== 'undefined' && window.scrollBy) window.scrollBy(0, pixelsToScroll);
       autoScroll.accumulator -= pixelsToScroll;
     }
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-    const distanceToBottom = document.documentElement.scrollHeight - getScrollTop() - viewportHeight;
+    const viewportHeight = typeof window !== 'undefined' ? (window.innerHeight || document.documentElement.clientHeight || 0) : 0;
+    const scrollHeight = typeof document !== 'undefined' && document.documentElement ? document.documentElement.scrollHeight : 0;
+    const distanceToBottom = scrollHeight - getScrollTop() - viewportHeight;
     if (distanceToBottom < 1) toggleAutoScroll();
-    else requestAnimationFrame(autoScrollLoop);
+    else if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(autoScrollLoop);
   }
 
   function toggleAutoScroll() {
@@ -153,7 +197,7 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
       els.autoScrollBtn.setAttribute('title', 'Stop Auto Scroll');
       autoScroll.lastScrollTime = 0;
       autoScroll.accumulator = 0;
-      requestAnimationFrame(autoScrollLoop);
+      if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(autoScrollLoop);
       ui.announceLive('Auto-scroll started.');
     } else {
       els.autoScrollBtn.classList.remove('active');
@@ -180,17 +224,19 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
       return;
     }
     const headingTop = heading.getBoundingClientRect().top + getScrollTop();
-    window.scrollTo({ top: Math.max(0, headingTop - offset), behavior: 'smooth' });
+    if (typeof window !== 'undefined' && window.scrollTo) {
+      window.scrollTo({ top: Math.max(0, headingTop - offset), behavior: 'smooth' });
+    }
   }
 
   function populateAndShowTOC() {
     if (!els.readerContent || !els.tocDialog || !els.tocBody) return;
-    const headings = els.readerContent.querySelectorAll('h1, h2, h3');
+    const headings = els.readerContent.querySelectorAll('h1, h2, h3, h4, h5, h6');
     if (headings.length === 0) {
       ui.showStatus('No headings found in this document.', 'info');
       return;
     }
-    runtime.reader.lastActiveElement = document.activeElement;
+    runtime.reader.lastActiveElement = typeof document !== 'undefined' ? document.activeElement : null;
     els.tocBody.innerHTML = '';
     headings.forEach(heading => {
       if (!heading.id) heading.id = `heading-${Math.random().toString(36).slice(2, 11)}`;
@@ -215,7 +261,7 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
   }
 
   function isMobileSheetLayout() {
-    return window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
+    return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
   }
 
   function toggleMobileSheet() {
@@ -224,11 +270,19 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     else expandMobileSheet();
   }
 
+  let sheetFocusTrapListener = null;
+
   function expandMobileSheet() {
-    if (els.toolbar) els.toolbar.classList.add('expanded');
+    runtime.reader.lastActiveElement = typeof document !== 'undefined' ? document.activeElement : null;
+    if (els.toolbar) {
+      els.toolbar.classList.add('expanded');
+      els.toolbar.setAttribute('role', 'dialog');
+      els.toolbar.setAttribute('aria-modal', 'true');
+      els.toolbar.setAttribute('aria-label', 'Reading Settings');
+    }
     if (els.sheetBackdrop) els.sheetBackdrop.classList.add('show');
     ui.setContainerFocusable(els.toolbar, true);
-    if (isMobileSheetLayout()) {
+    if (isMobileSheetLayout() && typeof document !== 'undefined' && document.body) {
       document.body.classList.add('mobile-sheet-active');
       if (els.toolbar) els.toolbar.scrollTop = 0;
     }
@@ -237,56 +291,131 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
       els.mobileFab.setAttribute('aria-label', 'Close Reading Settings');
       els.mobileFab.setAttribute('aria-expanded', 'true');
     }
+
+    if (els.toolbar) {
+      const focusableElements = Array.from(els.toolbar.querySelectorAll(
+        'button:not([disabled]):not([tabindex="-1"]), [href]:not([tabindex="-1"]), input:not([disabled]):not([tabindex="-1"]), select:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])'
+      ));
+      if (focusableElements.length > 0) {
+        try { focusableElements[0].focus(); } catch (err) {}
+      }
+
+      if (!sheetFocusTrapListener) {
+        sheetFocusTrapListener = event => {
+          if (!els.toolbar || !els.toolbar.classList.contains('expanded')) return;
+          if (event.key === 'Tab') {
+            const focusables = Array.from(els.toolbar.querySelectorAll(
+              'button:not([disabled]):not([tabindex="-1"]), [href]:not([tabindex="-1"]), input:not([disabled]):not([tabindex="-1"]), select:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])'
+            )).filter(el => el.offsetParent !== null);
+            if (!focusables.length) return;
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            if (event.shiftKey) {
+              if (document.activeElement === first || !els.toolbar.contains(document.activeElement)) {
+                event.preventDefault();
+                last.focus();
+              }
+            } else {
+              if (document.activeElement === last || !els.toolbar.contains(document.activeElement)) {
+                event.preventDefault();
+                first.focus();
+              }
+            }
+          }
+        };
+        els.toolbar.addEventListener('keydown', sheetFocusTrapListener);
+      }
+    }
   }
 
   function collapseMobileSheet() {
-    if (els.toolbar) els.toolbar.classList.remove('expanded');
+    if (els.toolbar) {
+      els.toolbar.classList.remove('expanded');
+      els.toolbar.removeAttribute('aria-modal');
+      els.toolbar.removeAttribute('role');
+      els.toolbar.removeAttribute('aria-label');
+      if (sheetFocusTrapListener) {
+        els.toolbar.removeEventListener('keydown', sheetFocusTrapListener);
+        sheetFocusTrapListener = null;
+      }
+    }
     if (els.sheetBackdrop) els.sheetBackdrop.classList.remove('show');
     ui.setContainerFocusable(els.toolbar, false);
-    document.body.classList.remove('mobile-sheet-active');
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.remove('mobile-sheet-active');
+    }
     if (els.toolbar) els.toolbar.scrollTop = 0;
     if (els.mobileFab) {
       els.mobileFab.classList.remove('active');
       els.mobileFab.setAttribute('aria-label', 'Open Reading Settings');
       els.mobileFab.setAttribute('aria-expanded', 'false');
+      const targetFocus = (runtime.reader.lastActiveElement && typeof document !== 'undefined' && document.contains(runtime.reader.lastActiveElement))
+        ? runtime.reader.lastActiveElement
+        : els.mobileFab;
+      try { targetFocus.focus(); } catch (err) {}
     }
     const settings = getSettings();
     if (settings) settings.resetSettingsSections();
   }
 
   function setEditingLayoutActive(active) {
-    document.body.classList.toggle('editing-mode-active', Boolean(active));
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.toggle('editing-mode-active', Boolean(active));
+    }
     if (active) {
-      window.requestAnimationFrame(updateEditingLayoutOffset);
+      if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+        window.requestAnimationFrame(updateEditingLayoutOffset);
+      } else {
+        updateEditingLayoutOffset();
+      }
       return;
     }
-    document.documentElement.style.removeProperty('--editing-banner-height');
+    if (typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.style.removeProperty('--editing-banner-height');
+    }
   }
 
   function updateEditingLayoutOffset() {
-    if (!els.editingBanner || !document.body.classList.contains('editing-mode-active')) return;
+    if (!els.editingBanner || typeof document === 'undefined' || !document.body || !document.body.classList.contains('editing-mode-active')) return;
     const height = Math.ceil(els.editingBanner.getBoundingClientRect().height || 0);
-    if (height > 0) document.documentElement.style.setProperty('--editing-banner-height', `${height}px`);
+    if (height > 0 && document.documentElement) {
+      document.documentElement.style.setProperty('--editing-banner-height', `${height}px`);
+    }
   }
 
   function enterEditMode() {
-    if (!els.readerContent || !els.editingBanner || !els.editBtn) return;
+    if (!els.editingBanner || !els.editBtn) return;
     runtime.reader.activeRenderId += 1;
     ui.hideLoader();
     if (tts.getSession().isSpeaking) tts.stopTTS();
     if (runtime.autoScroll.active) toggleAutoScroll();
     state.isEditing = true;
-    window.clearTimeout(state.toolbarTimer);
-    state.toolbarTimer = null;
+    if (typeof window !== 'undefined' && window.clearTimeout) {
+      window.clearTimeout(state.toolbarTimer);
+      state.toolbarTimer = null;
+    }
     if (els.toolbar) {
       els.toolbar.classList.remove('hidden-bar');
       ui.setContainerFocusable(els.toolbar, true);
     }
-    els.readerContent.textContent = state.currentText;
-    els.readerContent.setAttribute('contenteditable', 'true');
-    els.readerContent.setAttribute('role', 'textbox');
-    els.readerContent.setAttribute('aria-label', 'Editable reader text');
-    els.readerContent.setAttribute('aria-multiline', 'true');
+    // Dedicated editing textarea preserves raw text exactly without DOM normalization
+    if (els.readerContent) els.readerContent.hidden = true;
+    if (els.readerEditor) {
+      els.readerEditor.hidden = false;
+      els.readerEditor.value = state.currentText;
+      const currentSize = ['small', 'medium', 'large', 'xl'].find(s => els.readerContent && els.readerContent.classList && els.readerContent.classList.contains(`fs-${s}`)) || 'medium';
+      if (els.readerEditor.classList) {
+        els.readerEditor.classList.remove('fs-small', 'fs-medium', 'fs-large', 'fs-xl');
+        els.readerEditor.classList.add(`fs-${currentSize}`);
+      }
+      if (els.readerContent && els.readerContent.style && els.readerEditor.style) {
+        if (els.readerContent.style.paddingLeft) els.readerEditor.style.paddingLeft = els.readerContent.style.paddingLeft;
+        if (els.readerContent.style.paddingRight) els.readerEditor.style.paddingRight = els.readerContent.style.paddingRight;
+        if (els.readerContent.style.lineHeight) els.readerEditor.style.lineHeight = els.readerContent.style.lineHeight;
+        if (els.readerContent.style.letterSpacing) els.readerEditor.style.letterSpacing = els.readerContent.style.letterSpacing;
+      }
+      els.readerEditor.focus();
+    }
     els.editingBanner.classList.add('show');
     setEditingLayoutActive(true);
     els.editBtn.innerHTML = '<span aria-hidden="true">&#x1F4BE;</span> Save';
@@ -294,27 +423,30 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     els.editBtn.setAttribute('title', 'Save and Exit');
     els.editBtn.setAttribute('aria-label', 'Save and Exit');
     els.editBtn.setAttribute('aria-pressed', 'true');
-    els.readerContent.focus();
     ui.announceLive('Editing mode activated. Focus moved to raw reader text.');
   }
 
   function saveAndExitEditMode(options = {}) {
-    if (!els.readerContent || !els.editingBanner || !els.editBtn) return;
-    window.clearTimeout(runtime.reader.editDebounceTimer);
-    runtime.reader.editDebounceTimer = null;
+    if (!state.isEditing) return;
+    if (typeof window !== 'undefined' && window.clearTimeout) {
+      window.clearTimeout(runtime.reader.editDebounceTimer);
+      runtime.reader.editDebounceTimer = null;
+    }
     state.isEditing = false;
-    els.readerContent.removeAttribute('contenteditable');
-    els.readerContent.removeAttribute('role');
-    els.readerContent.removeAttribute('aria-label');
-    els.readerContent.removeAttribute('aria-multiline');
-    els.editingBanner.classList.remove('show');
+    if (els.readerEditor) {
+      state.currentText = els.readerEditor.value;
+      els.readerEditor.hidden = true;
+    }
+    if (els.readerContent) els.readerContent.hidden = false;
+    if (els.editingBanner) els.editingBanner.classList.remove('show');
     setEditingLayoutActive(false);
-    els.editBtn.innerHTML = '<span aria-hidden="true">&#x270E;&#xFE0F;</span> Edit';
-    els.editBtn.classList.remove('active');
-    els.editBtn.setAttribute('title', 'Edit Text');
-    els.editBtn.setAttribute('aria-label', 'Edit Text');
-    els.editBtn.setAttribute('aria-pressed', 'false');
-    state.currentText = els.readerContent.innerText || '';
+    if (els.editBtn) {
+      els.editBtn.innerHTML = '<span aria-hidden="true">&#x270E;&#xFE0F;</span> Edit';
+      els.editBtn.classList.remove('active');
+      els.editBtn.setAttribute('title', 'Edit Text');
+      els.editBtn.setAttribute('aria-label', 'Edit Text');
+      els.editBtn.setAttribute('aria-pressed', 'false');
+    }
     renderTextAsync(state.currentText, () => {
       scheduleWordCountUpdate();
       ui.announceLive('Changes kept for this session. Reading mode restored.');
@@ -322,39 +454,43 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     }, { suppressLoader: Boolean(options.suppressRenderLoader) });
   }
 
+  function cancelEditMode() {
+    if (!state.isEditing) return;
+    if (typeof window !== 'undefined' && window.clearTimeout) {
+      window.clearTimeout(runtime.reader.editDebounceTimer);
+      runtime.reader.editDebounceTimer = null;
+    }
+    state.isEditing = false;
+    if (els.readerEditor) {
+      els.readerEditor.value = '';
+      els.readerEditor.hidden = true;
+    }
+    if (els.readerContent) els.readerContent.hidden = false;
+    if (els.editingBanner) els.editingBanner.classList.remove('show');
+    setEditingLayoutActive(false);
+    if (els.editBtn) {
+      els.editBtn.innerHTML = '<span aria-hidden="true">&#x270E;&#xFE0F;</span> Edit';
+      els.editBtn.classList.remove('active');
+      els.editBtn.setAttribute('title', 'Edit Text');
+      els.editBtn.setAttribute('aria-label', 'Edit Text');
+      els.editBtn.setAttribute('aria-pressed', 'false');
+    }
+    scheduleWordCountUpdate();
+    ui.announceLive('Editing cancelled. Document unchanged.');
+    ui.showStatus('Edits cancelled.', 'info');
+  }
+
   function toggleEditing() {
     if (state.isEditing) saveAndExitEditMode();
     else enterEditMode();
   }
 
-  function insertPlainTextAtSelection(text) {
-    if (!text || !els.readerContent) return;
-    const selection = window.getSelection ? window.getSelection() : null;
-    if (!selection || selection.rangeCount === 0 || !els.readerContent.contains(selection.anchorNode)) {
-      els.readerContent.appendChild(document.createTextNode(text));
-      return;
-    }
-    const range = selection.getRangeAt(0);
-    range.deleteContents();
-    const textNode = document.createTextNode(text);
-    range.insertNode(textNode);
-    range.setStartAfter(textNode);
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
-  }
-
-  function handlePlainTextEditPaste(event) {
-    if (!state.isEditing || !els.readerContent || event.currentTarget !== els.readerContent) return;
-    event.preventDefault();
-    const clipboard = event.clipboardData || window.clipboardData;
-    insertPlainTextAtSelection(clipboard ? clipboard.getData('text/plain') : '');
-  }
-
   function toggleFocus() {
     if (!els.toolbar || !els.backBtn || !els.wordCount || !els.focusRestore || !els.focusBtn) return;
     state.focusMode = !state.focusMode;
-    document.body.classList.toggle('focus-mode-active', state.focusMode);
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.toggle('focus-mode-active', state.focusMode);
+    }
     if (state.focusMode) {
       if (isMobileSheetLayout()) collapseMobileSheet();
       els.toolbar.classList.add('force-hidden');
@@ -365,7 +501,9 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
       els.focusBtn.setAttribute('aria-label', 'Show UI');
       els.focusBtn.setAttribute('title', 'Show UI');
       ui.setContainerFocusable(els.toolbar, false);
-      window.clearTimeout(state.toolbarTimer);
+      if (typeof window !== 'undefined' && window.clearTimeout) {
+        window.clearTimeout(state.toolbarTimer);
+      }
       ui.announceLive('Focus mode activated. UI controls hidden.');
       return;
     }
@@ -384,19 +522,21 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
   function resetToolbarTimer() {
     if (state.focusMode || state.isEditing || !els.toolbar) return;
     if (isMobileSheetLayout()) {
-      window.clearTimeout(state.toolbarTimer);
+      if (typeof window !== 'undefined' && window.clearTimeout) window.clearTimeout(state.toolbarTimer);
       ui.setContainerFocusable(els.toolbar, els.toolbar.classList.contains('expanded'));
       return;
     }
     els.toolbar.classList.remove('hidden-bar');
     ui.setContainerFocusable(els.toolbar, true);
-    window.clearTimeout(state.toolbarTimer);
-    state.toolbarTimer = window.setTimeout(() => {
-      if (state.isEditing) return;
-      if (els.toolbar.contains(document.activeElement)) return;
-      els.toolbar.classList.add('hidden-bar');
-      ui.setContainerFocusable(els.toolbar, false);
-    }, 3500);
+    if (typeof window !== 'undefined' && window.clearTimeout) {
+      window.clearTimeout(state.toolbarTimer);
+      state.toolbarTimer = window.setTimeout(() => {
+        if (state.isEditing) return;
+        if (typeof document !== 'undefined' && els.toolbar.contains(document.activeElement)) return;
+        els.toolbar.classList.add('hidden-bar');
+        ui.setContainerFocusable(els.toolbar, false);
+      }, 3500);
+    }
   }
 
   function updateMarginOnResize() {
@@ -414,7 +554,10 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     if (els.wordCount) els.wordCount.classList.remove('force-hidden');
     if (els.focusRestore) els.focusRestore.classList.remove('show');
     if (els.sheetBackdrop) els.sheetBackdrop.classList.remove('show');
-    document.body.classList.remove('mobile-sheet-active');
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.remove('mobile-sheet-active');
+      document.body.classList.remove('focus-mode-active');
+    }
     if (els.mobileFab) {
       els.mobileFab.classList.add('reader-active');
       els.mobileFab.classList.remove('active');
@@ -424,23 +567,29 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     const settings = getSettings();
     if (settings) settings.resetSettingsSections();
     state.focusMode = false;
-    document.body.classList.remove('focus-mode-active');
     if (els.toolbar) ui.setContainerFocusable(els.toolbar, true);
     scheduleWordCountUpdate();
     resetToolbarTimer();
-    window.setTimeout(() => window.scrollTo(0, 0), 50);
+    if (typeof window !== 'undefined' && window.scrollTo) {
+      window.setTimeout(() => window.scrollTo(0, 0), 50);
+    }
   }
 
   function goBack() {
     cancelPendingFileRead(context);
+    cancelPendingRender(context, { clearContent: false });
     if (state.isEditing) {
-      saveAndExitEditMode({ suppressRenderLoader: true });
-      ui.hideLoader();
+      cancelEditMode();
     }
-    if (tts.getSession().isSpeaking) tts.stopTTS();
+    if (tts && typeof tts.invalidateTokenization === 'function') {
+      tts.invalidateTokenization();
+    } else if (tts.getSession().isSpeaking) {
+      tts.stopTTS();
+    }
     if (runtime.autoScroll.active) toggleAutoScroll();
     if (runtime.reader.isRulerActive) setRulerActive(false, { announce: false });
     if (ui.getFullscreenElement()) ui.toggleFullscreen();
+    ui.hideLoader();
     if (els.readerView) els.readerView.classList.remove('active');
     if (els.inputView) els.inputView.classList.remove('hidden');
     if (els.backBtn) els.backBtn.classList.remove('show', 'force-hidden');
@@ -451,7 +600,10 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     if (els.wordCount) els.wordCount.classList.remove('force-hidden');
     if (els.focusRestore) els.focusRestore.classList.remove('show');
     if (els.sheetBackdrop) els.sheetBackdrop.classList.remove('show');
-    document.body.classList.remove('mobile-sheet-active');
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.remove('mobile-sheet-active');
+      document.body.classList.remove('focus-mode-active');
+    }
     if (els.mobileFab) {
       els.mobileFab.classList.remove('active', 'reader-active');
       els.mobileFab.setAttribute('aria-expanded', 'false');
@@ -460,14 +612,17 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     const settings = getSettings();
     if (settings) settings.resetSettingsSections();
     state.focusMode = false;
-    document.body.classList.remove('focus-mode-active');
     if (els.toolbar) ui.setContainerFocusable(els.toolbar, false);
-    if (els.pasteArea) els.pasteArea.value = state.currentText;
+    if (state.textSource === 'paste' && els.pasteArea && state.currentText) {
+      if (els.pasteArea.value !== state.currentText && state.currentText.length < 200000) {
+        els.pasteArea.value = state.currentText;
+      }
+    }
     if (els.clearBtn && els.pasteArea) els.clearBtn.style.display = els.pasteArea.value.trim() ? 'block' : 'none';
     if (els.progressBar) els.progressBar.style.width = '0%';
   }
 
-  function loadTextFlow(text) {
+  function loadTextFlow(text, source = 'file') {
     if (!text || !text.trim()) {
       ui.showStatus('Provide text input or upload a file first.', 'error');
       return;
@@ -480,6 +635,7 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
       return;
     }
     ui.clearStatus();
+    state.textSource = source;
     state.currentText = safeText;
     renderTextAsync(state.currentText, enterReader);
   }
@@ -489,7 +645,7 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     cancelPendingFileRead(context);
     cancelPendingRender(context);
     ui.hideLoader();
-    loadTextFlow(els.pasteArea.value);
+    loadTextFlow(els.pasteArea.value, 'paste');
   }
 
   function toggleClearBtn() {
@@ -500,25 +656,43 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
   function clearText() {
     cancelPendingFileRead(context);
     cancelPendingRender(context, { clearContent: true });
+    if (tts && typeof tts.invalidateTokenization === 'function') {
+      tts.invalidateTokenization();
+    }
     ui.hideLoader();
     state.currentText = '';
+    state.textSource = 'paste';
     if (els.pasteArea) els.pasteArea.value = '';
     toggleClearBtn();
     ui.showStatus('Text cleared from this session.', 'success');
   }
 
   function setInputProgress() {
-    if (!els.readerView || !els.readerView.classList.contains('active') || !els.progressBar) return;
-    const winScroll = getScrollTop();
-    const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-    const scrolled = height > 0 ? (winScroll / height) * 100 : 0;
-    els.progressBar.style.width = `${scrolled}%`;
+    if (!els.readerView || !els.readerView.classList.contains('active') || !els.progressBar || scrollProgressPending) return;
+    scrollProgressPending = true;
+
+    const executeProgress = () => {
+      scrollProgressPending = false;
+      if (!els.readerView || !els.readerView.classList.contains('active') || !els.progressBar) return;
+      const winScroll = getScrollTop();
+      const docHeight = typeof document !== 'undefined' && document.documentElement ? document.documentElement.scrollHeight : 0;
+      const clientHeight = typeof document !== 'undefined' && document.documentElement ? document.documentElement.clientHeight : 0;
+      const height = docHeight - clientHeight;
+      const scrolled = height > 0 ? (winScroll / height) * 100 : 0;
+      els.progressBar.style.width = `${scrolled}%`;
+    };
+
+    if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+      window.requestAnimationFrame(executeProgress);
+    } else {
+      executeProgress();
+    }
   }
 
   function handleDrop(event) {
     event.preventDefault();
     if (els.inputView) els.inputView.classList.remove('drag-active');
-    if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+    if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
       parser.handleFile({ target: { files: [event.dataTransfer.files[0]], value: '' } });
     }
   }
@@ -533,40 +707,29 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     if (els.focusBtn) els.focusBtn.addEventListener('click', toggleFocus);
     if (els.editBtn) els.editBtn.addEventListener('click', toggleEditing);
     if (els.focusRestore) els.focusRestore.addEventListener('click', toggleFocus);
-    if (els.readerContent) els.readerContent.addEventListener('paste', handlePlainTextEditPaste);
     if (els.readerContent) els.readerContent.addEventListener('mousemove', updateRulerPosition);
     if (els.readerContent) {
       els.readerContent.addEventListener('touchmove', event => {
         if (!runtime.reader.isRulerActive || event.touches.length !== 1 || !els.readingRuler) return;
-        const touch = event.touches[0];
-        const target = getElementTarget(document.elementFromPoint(touch.clientX, touch.clientY));
-        if (!target || !els.readerContent.contains(target)) return;
-        const textContainer = target.closest('p, li, h1, h2, h3, blockquote') || target;
-        const rect = textContainer.getBoundingClientRect();
-        const top = rect.top + getScrollTop();
-        els.readingRuler.style.height = `${rect.height + 4}px`;
-        els.readingRuler.style.transform = `translate3d(0, ${top - 2}px, 0)`;
+        updateRulerPosition(event);
       }, { passive: true });
       els.readerContent.addEventListener('click', event => {
         if (state.isEditing) return;
         const target = getElementTarget(event.target);
-        const wordElement = target ? target.closest('.tts-word') : null;
+        if (!target) return;
+        // Lazy tokenization: tokenize if not tokenized yet
+        if (!tts.getSession().wordMeta.length) {
+          tts.tokenize();
+        }
+        const wordElement = target.closest('.tts-word');
         if (!wordElement || !wordElement.hasAttribute('data-word-idx')) return;
         const index = parseInt(wordElement.getAttribute('data-word-idx'), 10);
         const session = tts.getSession();
         if (!Number.isNaN(index) && index >= 0 && index < session.wordMeta.length) tts.startSpeech(index);
       });
-      els.readerContent.addEventListener('input', () => {
-        if (!state.isEditing) return;
-        window.clearTimeout(runtime.reader.editDebounceTimer);
-        runtime.reader.editDebounceTimer = window.setTimeout(() => {
-          runtime.reader.editDebounceTimer = null;
-          if (!state.isEditing) return;
-          state.currentText = els.readerContent.innerText || '';
-          scheduleWordCountUpdate();
-          ui.showStatus('Edits kept for this session.', 'success');
-        }, 1000);
-      });
+    }
+    if (els.readerEditor) {
+      els.readerEditor.addEventListener('input', scheduleWordCountUpdate);
     }
     if (els.inputView) {
       els.inputView.addEventListener('dragover', event => {
@@ -594,38 +757,48 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
       els.toolbar.addEventListener('focusin', () => window.clearTimeout(state.toolbarTimer));
       els.toolbar.addEventListener('focusout', resetToolbarTimer);
     }
-    document.addEventListener('click', event => {
-      if (els.readerView && els.readerView.classList.contains('active') && els.toolbar && !els.toolbar.contains(event.target) && els.backBtn && !els.backBtn.contains(event.target) && els.focusRestore && !els.focusRestore.contains(event.target) && els.tocDialog && !els.tocDialog.contains(event.target) && els.mobileFab && !els.mobileFab.contains(event.target) && els.sheetBackdrop && !els.sheetBackdrop.contains(event.target)) resetToolbarTimer();
-    });
-    document.addEventListener('touchstart', event => {
-      if (els.readerView && els.readerView.classList.contains('active') && els.toolbar && !els.toolbar.contains(event.target) && els.backBtn && !els.backBtn.contains(event.target) && els.focusRestore && !els.focusRestore.contains(event.target) && els.tocDialog && !els.tocDialog.contains(event.target) && els.mobileFab && !els.mobileFab.contains(event.target) && els.sheetBackdrop && !els.sheetBackdrop.contains(event.target)) resetToolbarTimer();
-    }, { passive: true });
-    document.addEventListener('scroll', () => {
-      if (els.readerView && els.readerView.classList.contains('active') && els.toolbar && els.toolbar.contains(document.activeElement)) resetToolbarTimer();
-    }, { passive: true });
-    document.addEventListener('keydown', event => {
-      if (!els.readerView || !els.readerView.classList.contains('active')) return;
-      if (event.key === 'Escape') {
-        if (els.tocDialog && els.tocDialog.open) ui.closeTocDialog();
-        else if (state.focusMode) toggleFocus();
-        else goBack();
-      }
-      const settings = getSettings();
-      if (event.key === 'ArrowRight' && settings && settings.canUseGlobalPresetShortcut(event)) {
-        event.preventDefault();
-        settings.nextPreset();
-      }
-      if (event.key === 'ArrowLeft' && settings && settings.canUseGlobalPresetShortcut(event)) {
-        event.preventDefault();
-        settings.prevPreset();
-      }
-    });
+    if (typeof document !== 'undefined') {
+      document.addEventListener('click', event => {
+        if (els.readerView && els.readerView.classList.contains('active') && els.toolbar && !els.toolbar.contains(event.target) && els.backBtn && !els.backBtn.contains(event.target) && els.focusRestore && !els.focusRestore.contains(event.target) && els.tocDialog && !els.tocDialog.contains(event.target) && els.mobileFab && !els.mobileFab.contains(event.target) && els.sheetBackdrop && !els.sheetBackdrop.contains(event.target)) resetToolbarTimer();
+      });
+      document.addEventListener('touchstart', event => {
+        if (els.readerView && els.readerView.classList.contains('active') && els.toolbar && !els.toolbar.contains(event.target) && els.backBtn && !els.backBtn.contains(event.target) && els.focusRestore && !els.focusRestore.contains(event.target) && els.tocDialog && !els.tocDialog.contains(event.target) && els.mobileFab && !els.mobileFab.contains(event.target) && els.sheetBackdrop && !els.sheetBackdrop.contains(event.target)) resetToolbarTimer();
+      }, { passive: true });
+      document.addEventListener('scroll', () => {
+        if (els.readerView && els.readerView.classList.contains('active') && els.toolbar && els.toolbar.contains(document.activeElement)) resetToolbarTimer();
+      }, { passive: true });
+      document.addEventListener('keydown', event => {
+        if (!els.readerView || !els.readerView.classList.contains('active')) return;
+        if (event.key === 'Escape') {
+          if (els.tocDialog && els.tocDialog.open) {
+            ui.closeTocDialog();
+          } else if (els.toolbar && els.toolbar.classList.contains('expanded')) {
+            collapseMobileSheet();
+          } else if (state.isEditing) {
+            cancelEditMode();
+          } else if (state.focusMode) {
+            toggleFocus();
+          } else {
+            goBack();
+          }
+        }
+        const settings = getSettings();
+        if (event.key === 'ArrowRight' && settings && settings.canUseGlobalPresetShortcut(event)) {
+          event.preventDefault();
+          settings.nextPreset();
+        }
+        if (event.key === 'ArrowLeft' && settings && settings.canUseGlobalPresetShortcut(event)) {
+          event.preventDefault();
+          settings.prevPreset();
+        }
+      });
+      document.addEventListener('fullscreenchange', ui.updateFullscreenButton);
+      document.addEventListener('webkitfullscreenchange', ui.updateFullscreenButton);
+      document.addEventListener('msfullscreenchange', ui.updateFullscreenButton);
+    }
     if (els.fullscreenBtn) els.fullscreenBtn.addEventListener('click', ui.toggleFullscreen);
     if (els.autoScrollBtn) els.autoScrollBtn.addEventListener('click', toggleAutoScroll);
     if (els.downloadBtn) els.downloadBtn.addEventListener('click', ui.downloadText);
-    document.addEventListener('fullscreenchange', ui.updateFullscreenButton);
-    document.addEventListener('webkitfullscreenchange', ui.updateFullscreenButton);
-    document.addEventListener('msfullscreenchange', ui.updateFullscreenButton);
     if (els.tocBtn) els.tocBtn.addEventListener('click', populateAndShowTOC);
     if (els.closeTocBtn) els.closeTocBtn.addEventListener('click', ui.closeTocDialog);
     if (els.tocDialog) {
@@ -636,7 +809,7 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
       });
       els.tocDialog.addEventListener('close', () => {
         const previous = runtime.reader.lastActiveElement;
-        if (previous && document.contains(previous) && typeof previous.focus === 'function') {
+        if (previous && typeof document !== 'undefined' && document.contains(previous) && typeof previous.focus === 'function') {
           try { previous.focus({ preventScroll: true }); } catch (err) { previous.focus(); }
         }
       });
@@ -645,15 +818,20 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     if (els.mobileFab) els.mobileFab.addEventListener('click', toggleMobileSheet);
     if (els.sheetBackdrop) els.sheetBackdrop.addEventListener('click', collapseMobileSheet);
     if (els.bottomSheetHandle) els.bottomSheetHandle.addEventListener('click', collapseMobileSheet);
-    if (els.saveEditBannerBtn) els.saveEditBannerBtn.addEventListener('click', saveAndExitEditMode);
-    window.addEventListener('scroll', setInputProgress, { passive: true });
-    window.addEventListener('resize', updateMarginOnResize);
+    if (els.saveEditBannerBtn) els.saveEditBannerBtn.addEventListener('click', () => saveAndExitEditMode());
+    if (els.cancelEditBannerBtn) els.cancelEditBannerBtn.addEventListener('click', cancelEditMode);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('scroll', setInputProgress, { passive: true });
+      window.addEventListener('resize', updateMarginOnResize);
+    }
   }
 
   return {
     bindEvents,
+    cancelEditMode,
     cancelPendingRender: options => cancelPendingRender(context, options),
     collapseMobileSheet,
+    enterEditMode,
     enterReader,
     expandMobileSheet,
     goBack,

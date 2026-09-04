@@ -13,6 +13,8 @@ import {
 } from './constants.mjs';
 import { clampNumber } from './utils.mjs';
 
+// 190-character chunking serves as a practical mitigation against Chromium's 15-second
+// silent audio timeout. It is not an absolute browser guarantee across all engines and platforms.
 export function chunkText(text, baseOffset = 0, targetLen = CHUNK_TARGET) {
   const out = [];
   const len = text.length;
@@ -24,12 +26,35 @@ export function chunkText(text, baseOffset = 0, targetLen = CHUNK_TARGET) {
     }
     const end = start + targetLen;
     let splitAt = -1;
-    for (let i = Math.min(end, len - 1); i > start; i -= 1) {
-      if (/\s/.test(text[i])) {
-        splitAt = i;
+
+    // Prefer sentence boundaries [.!?] within comfortable window (>= start + 80)
+    for (let i = Math.min(end, len - 1); i >= Math.max(start + 80, start); i -= 1) {
+      if (/[.!?]/.test(text[i]) && (i + 1 === len || /\s/.test(text[i + 1]))) {
+        splitAt = i + 1;
         break;
       }
     }
+
+    // Next prefer clause boundaries [,;:]
+    if (splitAt === -1) {
+      for (let i = Math.min(end, len - 1); i >= Math.max(start + 80, start); i -= 1) {
+        if (/[,;:]/.test(text[i]) && (i + 1 === len || /\s/.test(text[i + 1]))) {
+          splitAt = i + 1;
+          break;
+        }
+      }
+    }
+
+    // Fall back to any whitespace
+    if (splitAt === -1) {
+      for (let i = Math.min(end, len - 1); i > start; i -= 1) {
+        if (/\s/.test(text[i])) {
+          splitAt = i;
+          break;
+        }
+      }
+    }
+
     if (splitAt === -1) splitAt = end;
     out.push({ text: text.slice(start, splitAt), start: baseOffset + start, end: baseOffset + splitAt });
     start = splitAt;
@@ -78,17 +103,21 @@ export function resolveVoiceIndex(voices, previousSelection, userLanguage = 'en-
 export function tokenizeReaderDOM(containerElement, documentObject = document) {
   const wordSpans = [];
   const wordMeta = [];
-  let fullSpokenText = '';
-  if (!containerElement) return { spans: wordSpans, meta: wordMeta, text: fullSpokenText };
+  if (!containerElement) return { spans: wordSpans, meta: wordMeta, text: '' };
 
-  const walker = documentObject.createTreeWalker(containerElement, NodeFilter.SHOW_TEXT, {
+  const filterShowText = typeof NodeFilter !== 'undefined' ? NodeFilter.SHOW_TEXT : 4;
+  const filterAccept = typeof NodeFilter !== 'undefined' ? NodeFilter.FILTER_ACCEPT : 1;
+  const filterReject = typeof NodeFilter !== 'undefined' ? NodeFilter.FILTER_REJECT : 2;
+  const filterSkip = typeof NodeFilter !== 'undefined' ? NodeFilter.FILTER_SKIP : 3;
+
+  const walker = documentObject.createTreeWalker(containerElement, filterShowText, {
     acceptNode(node) {
-      if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_SKIP;
+      if (!node.nodeValue || !node.nodeValue.trim()) return filterSkip;
       const parent = node.parentElement;
-      if (!parent) return NodeFilter.FILTER_SKIP;
+      if (!parent) return filterSkip;
       const tag = parent.tagName.toLowerCase();
-      if (tag === 'script' || tag === 'style') return NodeFilter.FILTER_REJECT;
-      return NodeFilter.FILTER_ACCEPT;
+      if (tag === 'script' || tag === 'style') return filterReject;
+      return filterAccept;
     }
   });
   const textNodes = [];
@@ -96,30 +125,45 @@ export function tokenizeReaderDOM(containerElement, documentObject = document) {
 
   const wordPattern = /\S+/g;
   let lastBlockElement = null;
+  const textParts = [];
+  let currentLen = 0;
+  let trailingWhitespace = false;
+  let trailingNewlines = 0;
+
   textNodes.forEach(textNode => {
     const text = textNode.nodeValue;
     const parentBlock = textNode.parentElement
-      ? textNode.parentElement.closest('p, h1, h2, h3, li, blockquote, pre')
+      ? textNode.parentElement.closest('p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, table')
       : null;
 
     if (parentBlock && lastBlockElement && parentBlock !== lastBlockElement) {
-      if (!fullSpokenText.endsWith('\n\n')) {
-        if (!fullSpokenText.endsWith('\n')) fullSpokenText += '\n';
-        fullSpokenText += '\n';
+      if (trailingNewlines < 2) {
+        const needed = 2 - trailingNewlines;
+        const nls = '\n'.repeat(needed);
+        textParts.push(nls);
+        currentLen += needed;
+        trailingNewlines = 2;
+        trailingWhitespace = true;
       }
-    } else if (fullSpokenText.length > 0 && !/\s$/.test(fullSpokenText)) {
-      fullSpokenText += ' ';
+    } else if (currentLen > 0 && !trailingWhitespace) {
+      textParts.push(' ');
+      currentLen += 1;
+      trailingWhitespace = true;
+      trailingNewlines = 0;
     }
     lastBlockElement = parentBlock;
 
     const fragment = documentObject.createDocumentFragment();
     let lastIndex = 0;
     let match;
+    wordPattern.lastIndex = 0;
     while ((match = wordPattern.exec(text)) !== null) {
       if (match.index > lastIndex) {
         const whitespace = text.slice(lastIndex, match.index);
-        fragment.appendChild(documentObject.createTextNode(whitespace));
-        fullSpokenText += whitespace;
+        textParts.push(whitespace);
+        currentLen += whitespace.length;
+        trailingWhitespace = /\s$/.test(whitespace);
+        trailingNewlines = whitespace.endsWith('\n\n') ? 2 : (whitespace.endsWith('\n') ? 1 : 0);
       }
       const wordText = match[0];
       const span = documentObject.createElement('span');
@@ -129,20 +173,26 @@ export function tokenizeReaderDOM(containerElement, documentObject = document) {
       span.textContent = wordText;
       fragment.appendChild(span);
 
-      const wordStart = fullSpokenText.length;
-      fullSpokenText += wordText;
-      const wordEnd = fullSpokenText.length;
+      const wordStart = currentLen;
+      textParts.push(wordText);
+      currentLen += wordText.length;
+      const wordEnd = currentLen;
       wordSpans.push(span);
       wordMeta.push({ index: wordIndex, text: wordText, start: wordStart, end: wordEnd, element: span });
       lastIndex = match.index + wordText.length;
+      trailingWhitespace = false;
+      trailingNewlines = 0;
     }
     if (lastIndex < text.length) {
       const trailing = text.slice(lastIndex);
-      fragment.appendChild(documentObject.createTextNode(trailing));
-      fullSpokenText += trailing;
+      textParts.push(trailing);
+      currentLen += trailing.length;
+      trailingWhitespace = /\s$/.test(trailing);
+      trailingNewlines = trailing.endsWith('\n\n') ? 2 : (trailing.endsWith('\n') ? 1 : 0);
     }
     if (textNode.parentNode) textNode.parentNode.replaceChild(fragment, textNode);
   });
+  const fullSpokenText = textParts.join('');
   return { spans: wordSpans, meta: wordMeta, text: fullSpokenText };
 }
 
@@ -180,12 +230,19 @@ export function createTTS(context, { ui }) {
     const span = session.wordSpans[index];
     if (!span) return;
     span.classList.add('active');
-    const rate = parseFloat(els.voiceRateInput ? els.voiceRateInput.value : '1.0') || 1.0;
-    const scrollBehavior = rate > 1.5 ? 'auto' : 'smooth';
-    try {
-      span.scrollIntoView({ block: 'nearest', behavior: scrollBehavior });
-    } catch (err) {
-      span.scrollIntoView();
+    const rect = typeof span.getBoundingClientRect === 'function' ? span.getBoundingClientRect() : null;
+    const viewportHeight = typeof window !== 'undefined' ? (window.innerHeight || document.documentElement.clientHeight || 800) : 800;
+    const topComfort = 80;
+    const bottomComfort = viewportHeight - 100;
+    const needsScroll = !rect || rect.top < topComfort || rect.bottom > bottomComfort;
+    if (needsScroll) {
+      const rate = parseFloat(els.voiceRateInput ? els.voiceRateInput.value : '1.0') || 1.0;
+      const scrollBehavior = rate > 1.5 ? 'auto' : 'smooth';
+      try {
+        span.scrollIntoView({ block: 'nearest', behavior: scrollBehavior });
+      } catch (err) {
+        if (typeof span.scrollIntoView === 'function') span.scrollIntoView();
+      }
     }
   }
 
@@ -196,6 +253,16 @@ export function createTTS(context, { ui }) {
     session.wordMeta = result.meta;
     session.fullSpokenText = result.text;
     return result;
+  }
+
+  function invalidateTokenization() {
+    stopTTS();
+    session.wordSpans = [];
+    session.wordMeta = [];
+    session.fullSpokenText = '';
+    session.chunks = [];
+    session.chunkIndex = 0;
+    session.currentWordIndex = -1;
   }
 
   function populateVoices() {
@@ -548,9 +615,10 @@ export function createTTS(context, { ui }) {
         els.voiceRateInput.value = value;
         els.voiceRateVal.textContent = `${value.toFixed(1)}x`;
         if (els.audioSpeedBtn) els.audioSpeedBtn.textContent = `${value.toFixed(1)}x`;
-        ui.announceLive(`Speech speed changed to ${value.toFixed(1)}x.`);
       });
       els.voiceRateInput.addEventListener('change', () => {
+        const value = clampNumber(els.voiceRateInput.value, 1.0, 0.5, 2.5);
+        ui.announceLive(`Speech speed changed to ${value.toFixed(1)}x.`);
         if (session.state === STATE_PLAYING) restartFromWord(session.currentWordIndex >= 0 ? session.currentWordIndex : 0);
       });
     }
@@ -574,6 +642,7 @@ export function createTTS(context, { ui }) {
     cycleVoiceSpeed,
     getSession: () => session,
     highlightAtIndex,
+    invalidateTokenization,
     pauseSpeech,
     populateVoices,
     restartFromWord,
