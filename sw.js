@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'reader-webapp-shell-v7';
+const CACHE_NAME = 'reader-webapp-shell-v8';
 const APP_SHELL = [
   './',
   './index.html',
@@ -21,9 +21,6 @@ const APP_SHELL = [
   './vendor/marked.esm.mjs',
   './vendor/pdf.min.mjs',
   './vendor/pdf.worker.min.mjs',
-  './vendor/pdf.min.js',
-  './vendor/pdf.worker.min.js',
-  './vendor/mammoth.browser.min.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/maskable-192.png',
@@ -131,6 +128,27 @@ async function staleWhileRevalidate(request, event) {
   return fetchPromise;
 }
 
+async function cacheFirst(request, event) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  try {
+    const response = await fetch(request);
+    if (response && response.ok) {
+      event.waitUntil(safeCachePut(cache, request, response.clone()));
+    }
+    return response;
+  } catch (err) {
+    return cached || Response.error();
+  }
+}
+
+function isVendorRequest(request) {
+  if (!isSameOriginGet(request)) return false;
+  const url = new URL(request.url);
+  return url.pathname.includes('/vendor/');
+}
+
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
@@ -158,6 +176,11 @@ self.addEventListener('fetch', event => {
     if (url.origin === self.location.origin && url.href.startsWith(self.registration.scope)) {
       event.respondWith(navigationResponse(request, event));
     }
+    return;
+  }
+
+  if (isVendorRequest(request)) {
+    event.respondWith(cacheFirst(request, event));
     return;
   }
 
