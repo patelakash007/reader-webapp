@@ -6,6 +6,7 @@ const APP_SHELL = [
   './index.html',
   './style.css',
   './experience.css',
+  './experience-hotfix.css',
   './script.js',
   './src/app.mjs',
   './src/constants.mjs',
