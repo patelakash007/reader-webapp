@@ -24,6 +24,8 @@ export function createAppContext(els) {
       isGesture: false,
       isEditing: false,
       smartHeadings: true,
+      textSource: 'paste',
+      activeFileName: '',
       wordCountTimer: null,
       lastCarouselDragDistance: 0
     },
@@ -49,6 +51,7 @@ export function createAppContext(els) {
       },
       tts: {
         voices: [],
+        voicesSignature: '',
         wordMeta: [],
         wordSpans: [],
         fullSpokenText: '',
@@ -65,6 +68,7 @@ export function createAppContext(els) {
         speechGeneration: 0,
         visibilityInterrupted: false,
         speechCanceledWhileHidden: false,
+        pausedAt: 0,
         isSpeaking: false,
         supported: typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window,
         synth: typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window

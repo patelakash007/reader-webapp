@@ -84,3 +84,6 @@ jobs:
 
       - name: Run browser smoke checks
         run: npm run test:smoke
+
+      - name: Run deep browser regression
+        run: npm run test:deep

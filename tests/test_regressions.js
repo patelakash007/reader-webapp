@@ -8,8 +8,10 @@ const path = require('node:path');
   const parser = await import('../src/parser.mjs');
   const tts = await import('../src/tts.mjs');
   const utils = await import('../src/utils.mjs');
+  const uiModule = await import('../src/ui.mjs');
   const { createAppContext } = await import('../src/context.mjs');
   const { createReader } = await import('../src/reader.mjs');
+  const { createSettings } = await import('../src/settings.mjs');
 
   console.log('====================================================');
   console.log('RUNNING REGRESSION TEST SUITE');
@@ -507,6 +509,503 @@ const path = require('node:path');
   } else {
     console.log('✓ DOCX file not found in parent, skipping real file check.');
   }
+
+  console.log('\n--- 23. File Loading: parser.handleFile with valid .txt and unsupported format ---');
+  if (typeof global.FileReader === 'undefined') {
+    global.FileReader = class FakeFileReader {
+      readAsText(file) {
+        setTimeout(() => {
+          if (this.onload) this.onload({ target: { result: file._content || '' } });
+        }, 0);
+      }
+      readAsArrayBuffer(file) {
+        setTimeout(() => {
+          let buf = file._buffer;
+          if (!buf && typeof file._content === 'string') {
+            buf = new TextEncoder().encode(file._content).buffer;
+          }
+          if (this.onload) this.onload({ target: { result: buf || new ArrayBuffer(0) } });
+        }, 0);
+      }
+    };
+  }
+  let loadedText = null;
+  let statusReported = null;
+  let statusType = null;
+  const fileTestUI = {
+    ...mockUI,
+    showStatus(msg, type) {
+      statusReported = msg;
+      statusType = type;
+    }
+  };
+  const fileContext = createAppContext();
+  const fileParserInstance = parser.createParser(fileContext, {
+    ui: fileTestUI,
+    onTextLoaded(t) {
+      loadedText = t;
+    }
+  });
+
+  // Valid .txt file
+  const txtEvent = {
+    target: {
+      files: [{ name: 'notes.txt', size: 12, _content: 'Hello World!' }],
+      value: 'notes.txt'
+    }
+  };
+  await fileParserInstance.handleFile(txtEvent);
+  assert.strictEqual(loadedText, 'Hello World!', `Expected onTextLoaded to receive text content, got: ${loadedText}`);
+  assert.strictEqual(txtEvent.target.value, '', 'Input target value should be reset');
+
+  // Unsupported .exe file
+  const exeEvent = {
+    target: {
+      files: [{ name: 'malware.exe', size: 100 }],
+      value: 'malware.exe'
+    }
+  };
+  await fileParserInstance.handleFile(exeEvent);
+  assert(statusReported && statusReported.includes('Unsupported format'), `Expected Unsupported format status, got: ${statusReported}`);
+  assert.strictEqual(statusType, 'error', 'Expected error status type');
+  assert.strictEqual(exeEvent.target.value, '', 'Input target value should be reset for unsupported files');
+  console.log('✓ parser.handleFile successfully loaded .txt and rejected unsupported .exe format.');
+
+  console.log('\n--- 24. TTS: Click-to-speak safeguards (unsupported, selection, links) ---');
+  let clickHandler = null;
+  const mockReaderContent = {
+    addEventListener(evt, fn) {
+      if (evt === 'click') clickHandler = fn;
+    },
+    removeEventListener() {},
+    contains() { return true; },
+    querySelectorAll() { return []; }
+  };
+  const clickContext = createAppContext({
+    readerContent: mockReaderContent,
+    voiceRateInput: { value: '1.0' }
+  });
+  let tokenizedCount = 0;
+  let startedSpeechAt = null;
+  const mockTTSController = {
+    getSession: () => clickContext.runtime.tts,
+    tokenize() {
+      tokenizedCount += 1;
+      clickContext.runtime.tts.wordMeta = [{ index: 0, text: 'hello', start: 0, end: 5 }];
+    },
+    startSpeech(idx) {
+      startedSpeechAt = idx;
+    },
+    stopTTS() {}
+  };
+  const readerInstance = createReader(clickContext, {
+    ui: mockUI,
+    parser: mockParser,
+    tts: mockTTSController,
+    getSettings: mockSettings
+  });
+  readerInstance.bindEvents();
+  assert(typeof clickHandler === 'function', 'Click handler should be attached');
+
+  // Case 1: TTS unsupported -> do not tokenize
+  clickContext.runtime.tts.supported = false;
+  clickHandler({ target: { closest: () => null } });
+  assert.strictEqual(tokenizedCount, 0, 'Should not tokenize when TTS is unsupported');
+
+  // Case 2: TTS supported, but user has an active text selection -> do not tokenize
+  clickContext.runtime.tts.supported = true;
+  global.window = {
+    getSelection: () => ({ isCollapsed: false, toString: () => 'selected text' })
+  };
+  clickHandler({ target: { closest: () => null } });
+  assert.strictEqual(tokenizedCount, 0, 'Should not tokenize when text is selected');
+
+  // Case 3: Target is a link -> do not tokenize
+  global.window.getSelection = () => ({ isCollapsed: true, toString: () => '' });
+  clickHandler({ target: { closest: sel => (sel.includes('a') ? {} : null) } });
+  assert.strictEqual(tokenizedCount, 0, 'Should not tokenize when clicking a link');
+
+  // Case 4: Valid click on text -> tokenizes and starts speech
+  const wordSpan = {
+    closest: sel => (sel === '.tts-word' ? wordSpan : null),
+    hasAttribute: attr => attr === 'data-word-idx',
+    getAttribute: attr => (attr === 'data-word-idx' ? '0' : null)
+  };
+  global.document = {
+    elementFromPoint: () => wordSpan
+  };
+  clickHandler({
+    target: { closest: () => null },
+    clientX: 100,
+    clientY: 200
+  });
+  assert.strictEqual(tokenizedCount, 1, 'Should tokenize on valid word click');
+  assert.strictEqual(startedSpeechAt, 0, 'Should start speech at word index 0 on first click');
+  console.log('✓ Reader click handler safeguards against unsupported TTS, active selection, links, and speaks on first click.');
+
+  console.log('\n--- 25. Editor: Empty edits discarded and text limit enforced on save ---');
+  let lastStatusMsg = null;
+  let lastStatusType = null;
+  const editorUI = {
+    ...mockUI,
+    showStatus(msg, type) {
+      lastStatusMsg = msg;
+      lastStatusType = type;
+    }
+  };
+  const makeClassList = () => ({ add() {}, remove() {}, contains() { return false; } });
+  const editorContext = createAppContext({
+    readerEditor: { value: '   \n\t  ', hidden: false },
+    readerContent: { hidden: true, textContent: 'Initial content', insertAdjacentHTML() {} },
+    editingBanner: { classList: makeClassList() },
+    editBtn: { setAttribute() {}, classList: makeClassList() }
+  });
+  editorContext.state.currentText = 'Original persistent document';
+  editorContext.state.isEditing = true;
+  const editorReader = createReader(editorContext, {
+    ui: editorUI,
+    parser,
+    tts: mockTTS,
+    getSettings: mockSettings
+  });
+
+  // Saving empty edits
+  editorReader.saveAndExitEditMode();
+  assert.strictEqual(editorContext.state.currentText, 'Original persistent document', 'Original text must be preserved on empty save');
+  assert.strictEqual(editorContext.state.isEditing, false, 'Should exit editing mode on empty cancel');
+  assert(lastStatusMsg && lastStatusMsg.includes('Nothing to save'), `Expected 'Nothing to save' message, got: ${lastStatusMsg}`);
+  assert.strictEqual(lastStatusType, 'info');
+
+  // Saving text exceeding limit
+  editorContext.state.isEditing = true;
+  editorContext.els.readerEditor.value = 'A'.repeat(1_000_001);
+  editorReader.saveAndExitEditMode();
+  assert.strictEqual(editorContext.state.isEditing, true, 'Must remain in editing mode when text exceeds limit');
+  assert(lastStatusMsg && lastStatusMsg.includes('contains too much extracted text'), `Expected limit error, got: ${lastStatusMsg}`);
+  assert.strictEqual(lastStatusType, 'error');
+  console.log('✓ Editor save safely handles empty content and enforces character limits.');
+
+  console.log('\n--- 26. Markdown: Multi-line ALL-CAPS paragraph does not collapse into single heading with newline (F-08) ---');
+  const multiLineAllCaps = 'CHAPTER ONE\nTHE BEGINNING';
+  const multiLineHtml = parser.parseMarkdownToHtml(multiLineAllCaps, true);
+  assert(!multiLineHtml.includes('\n</h2>') && !multiLineHtml.includes('<h2 id="heading-0">CHAPTER ONE\nTHE BEGINNING</h2>'), 'Multi-line shouted paragraph should not become a single heading with a newline');
+  assert(!multiLineHtml.match(/<h[1-6][^>]*>[^<]*\n[^<]*<\/h[1-6]>/), 'Headings must never contain raw newlines');
+  assert(multiLineHtml.includes('<p>') && multiLineHtml.includes('CHAPTER ONE') && multiLineHtml.includes('THE BEGINNING'), 'Multi-line text should remain in a paragraph');
+
+  const separateHeadings = 'CHAPTER ONE\n\nTHE BEGINNING';
+  const separateHtml = parser.parseMarkdownToHtml(separateHeadings, true);
+  const h2Count = (separateHtml.match(/<h2/g) || []).length;
+  assert.strictEqual(h2Count, 2, `Expected 2 headings when separated by blank lines, got ${h2Count}: ${separateHtml}`);
+  console.log('✓ Multi-line ALL-CAPS paragraph renders in <p> without collapsed raw newline heading.');
+
+  console.log('\n--- 27. DOM Cleanup: goBack clears reader DOM and wordCount text (F-14) ---');
+  const makeClassList2 = () => ({ add() {}, remove() {}, contains() { return false; } });
+  const backTestContent = { textContent: 'Previously rendered document DOM' };
+  const backTestWordCount = { textContent: '1,234 words', classList: makeClassList2() };
+  const backContext = createAppContext({
+    readerContent: backTestContent,
+    wordCount: backTestWordCount,
+    readerView: { classList: makeClassList2() },
+    inputView: { classList: makeClassList2() },
+    backBtn: { classList: makeClassList2() },
+    toolbar: { classList: makeClassList2() },
+    focusRestore: { classList: makeClassList2() }
+  });
+  const backReader = createReader(backContext, {
+    ui: mockUI,
+    parser,
+    tts: mockTTS,
+    getSettings: mockSettings
+  });
+  backReader.goBack();
+  assert.strictEqual(backTestContent.textContent, '', 'readerContent should be emptied when pressing Back');
+  assert.strictEqual(backTestWordCount.textContent, '', 'wordCount text should be emptied when pressing Back');
+  console.log('✓ goBack properly frees memory by clearing readerContent and wordCount.');
+
+  console.log('\n--- 28. Markdown: CommonMark fidelity (F-07) ---');
+  // Case 1: loose list should remain a single <ul>
+  const looseListHtml = parser.parseMarkdownToHtml('- a\n\n- b');
+  const ulMatches = looseListHtml.match(/<ul/g) || [];
+  assert.strictEqual(ulMatches.length, 1, `Expected exactly 1 <ul> for loose list, got ${ulMatches.length}`);
+  assert(looseListHtml.includes('<li>') && looseListHtml.includes('a') && looseListHtml.includes('b'));
+
+  // Case 2: Setext heading (Title\n---) should render <h2>
+  const setextHtml = parser.parseMarkdownToHtml('Title\n---');
+  assert(setextHtml.includes('<h2') && setextHtml.includes('Title</h2>'), `Expected <h2> for setext heading, got: ${setextHtml}`);
+  assert(!setextHtml.includes('<hr>'), `Setext heading must not be split into an <hr>`);
+
+  // Case 3: ~~~ fence with blank line inside
+  const tildeFenceHtml = parser.parseMarkdownToHtml('~~~\nfirst line\n\nsecond line\n~~~');
+  const preMatches = tildeFenceHtml.match(/<pre>/g) || [];
+  assert.strictEqual(preMatches.length, 1, `Expected 1 <pre> block for tilde fence with blank line, got ${preMatches.length}`);
+  assert(tildeFenceHtml.includes('first line\n\nsecond line'), 'Fence content with blank line must be preserved intact');
+
+  // Case 4: Indented code in list item
+  const indentedCodeInList = '- item 1\n\n    ```\n    indented code\n    ```';
+  const listCodeHtml = parser.parseMarkdownToHtml(indentedCodeInList);
+  assert(listCodeHtml.includes('<ul>') && listCodeHtml.includes('<li>') && listCodeHtml.includes('<code>indented code'), `Expected indented code inside list item, got: ${listCodeHtml}`);
+
+  // Case 5: GFM table followed by paragraph
+  const tableMd = '| Head A | Head B |\n| --- | --- |\n| Cell 1 | Cell 2 |\n\nFollowing paragraph text.';
+  const tableHtml = parser.parseMarkdownToHtml(tableMd);
+  assert(tableHtml.includes('<table>') && tableHtml.includes('Cell 1') && tableHtml.includes('<p>Following paragraph text.</p>'), `Table and paragraph should parse correctly: ${tableHtml}`);
+
+  // Case 6: Blockquote with lazy continuation
+  const lazyQuoteMd = '> line 1\nlazy continuation line 2';
+  const lazyQuoteHtml = parser.parseMarkdownToHtml(lazyQuoteMd);
+  const quoteCount = (lazyQuoteHtml.match(/<blockquote>/g) || []).length;
+  assert.strictEqual(quoteCount, 1, `Expected 1 blockquote, got ${quoteCount}`);
+  assert(lazyQuoteHtml.includes('line 1\nlazy continuation line 2') || (lazyQuoteHtml.includes('line 1') && lazyQuoteHtml.includes('lazy continuation line 2')), `Lazy continuation lines should belong to blockquote: ${lazyQuoteHtml}`);
+  console.log('✓ CommonMark fidelity preserved across loose lists, setext headings, tilde fences, nested code, tables, and blockquotes.');
+
+  console.log('\n--- 29. UI: Download filename derivation and delayed revocation (F-10) ---');
+  const today = new Date().toISOString().slice(0, 10);
+
+  // 1. Derivation from activeFileName
+  const fn1 = uiModule.deriveDownloadFilename('Text content', 'my-report.markdown');
+  assert.strictEqual(fn1, `my-report_${today}.txt`);
+
+  // 2. Derivation from first heading
+  const fn2 = uiModule.deriveDownloadFilename('# Chapter One: Journey Begins\n\nContent here', '');
+  assert.strictEqual(fn2, `Chapter_One_Journey_Begins_${today}.txt`);
+
+  // 3. Fallback when no heading or activeFileName
+  const fn3 = uiModule.deriveDownloadFilename('Plain paragraph without any headings.', '');
+  assert.strictEqual(fn3, 'Reader_Export.txt');
+
+  const fn4 = uiModule.deriveDownloadFilename('', '');
+  assert.strictEqual(fn4, 'Reader_Export.txt');
+
+  // 4. Delayed revocation logic
+  let listenerRegistered = false;
+  let timeoutRegistered = false;
+  let timeoutMs = 0;
+  global.window = {
+    addEventListener(type) {
+      if (type === 'focus') listenerRegistered = true;
+    },
+    removeEventListener() {},
+    setTimeout(cb, ms) {
+      timeoutRegistered = true;
+      timeoutMs = ms;
+      return 123;
+    },
+    clearTimeout() {}
+  };
+  global.Blob = class { constructor(data) { this.data = data; } };
+  let revokedUrl = null;
+  global.URL = {
+    createObjectURL() {
+      return 'blob:test-123';
+    },
+    revokeObjectURL(url) {
+      revokedUrl = url;
+    }
+  };
+  global.document = {
+    createElement() {
+      return {
+        href: '',
+        download: '',
+        click() {},
+        parentNode: null
+      };
+    },
+    body: {
+      appendChild(node) {
+        node.parentNode = this;
+      },
+      removeChild(node) {
+        node.parentNode = null;
+      }
+    }
+  };
+
+  const dlContext = createAppContext({});
+  dlContext.state.currentText = '# Heading\nBody';
+  const dlUi = uiModule.createUI(dlContext);
+  dlUi.downloadText();
+
+  assert.strictEqual(listenerRegistered, true, 'Window focus listener must be registered for revocation');
+  assert.strictEqual(timeoutRegistered, true, 'Timeout fallback must be scheduled for revocation');
+  assert.strictEqual(timeoutMs, 60000, 'Timeout delay must be 60,000ms');
+  assert.strictEqual(revokedUrl, null, 'URL must not be synchronously revoked on download');
+  console.log('✓ Download filename derived cleanly and URL revocation deferred safely.');
+
+  console.log('\n--- 30. Parser: Text encoding detection and BOM sniffing (F-18) ---');
+  // 1. Plain UTF-8
+  const plainUtf8 = new TextEncoder().encode('UTF-8 standard text with emoji: 🚀');
+  assert.strictEqual(parser.decodeTextBuffer(plainUtf8), 'UTF-8 standard text with emoji: 🚀');
+
+  // 2. UTF-8 with BOM
+  const utf8Bom = new Uint8Array([0xEF, 0xBB, 0xBF, ...new TextEncoder().encode('UTF-8 text with BOM')]);
+  assert.strictEqual(parser.decodeTextBuffer(utf8Bom), 'UTF-8 text with BOM');
+
+  // 3. UTF-16LE with BOM
+  const utf16le = new Uint8Array([0xFF, 0xFE, 0x48, 0x00, 0x65, 0x00, 0x6C, 0x00, 0x6C, 0x00, 0x6F, 0x00]); // "Hello"
+  assert.strictEqual(parser.decodeTextBuffer(utf16le), 'Hello');
+
+  // 4. UTF-16BE with BOM
+  const utf16be = new Uint8Array([0xFE, 0xFF, 0x00, 0x48, 0x00, 0x65, 0x00, 0x6C, 0x00, 0x6C, 0x00, 0x6F]); // "Hello"
+  assert.strictEqual(parser.decodeTextBuffer(utf16be), 'Hello');
+
+  // 5. Windows-1252 (contains byte 0x93 which is invalid in UTF-8)
+  const win1252Bytes = new Uint8Array([0x93, 0x53, 0x6D, 0x61, 0x72, 0x74, 0x20, 0x51, 0x75, 0x6F, 0x74, 0x65, 0x94]); // “Smart Quote”
+  assert.strictEqual(parser.decodeTextBuffer(win1252Bytes), '“Smart Quote”');
+
+  // 6. Empty buffer
+  assert.strictEqual(parser.decodeTextBuffer(new Uint8Array(0)), '');
+  console.log('✓ Text encoding detection handles UTF-8, BOMs (UTF-8, UTF-16LE, UTF-16BE), and Windows-1252 fallback.');
+
+  console.log('\n--- 31. Settings: Desktop mouse drag theme guard (F-20) ---');
+  const registeredEvents = [];
+  const gestureEl = {
+    addEventListener(evt) {
+      registeredEvents.push(evt);
+    },
+    removeEventListener() {}
+  };
+  const origTouchPoints = global.navigator?.maxTouchPoints;
+  const origUserAgent = global.navigator?.userAgent;
+  Object.defineProperty(global.navigator, 'maxTouchPoints', { value: 0, configurable: true, writable: true });
+  Object.defineProperty(global.navigator, 'userAgent', { value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', configurable: true, writable: true });
+  global.window = {
+    addEventListener() {},
+    removeEventListener() {}
+  };
+
+  const desktopSettingsContext = createAppContext({
+    presetTrack: { classList: { toggle() {} } },
+    lineHeightInput: { value: '1.85' },
+    letterSpacingInput: { value: '0' },
+    readerView: gestureEl
+  });
+  const desktopSettings = createSettings(desktopSettingsContext, {
+    ui: mockUI,
+    onResetToolbarTimer() {},
+    isMobileSheetLayout: () => false
+  });
+  desktopSettings.attachGestureArea(gestureEl);
+
+  assert(!registeredEvents.includes('mousedown'), 'Desktop should not attach mousedown listener for preset gesture');
+  assert(!registeredEvents.includes('mouseup'), 'Desktop should not attach mouseup listener for preset gesture');
+  assert(registeredEvents.includes('touchstart'), 'Touch listener should still be attached');
+
+  // When mobile device is simulated
+  registeredEvents.length = 0;
+  Object.defineProperty(global.navigator, 'maxTouchPoints', { value: 5, configurable: true, writable: true });
+  const mobileSettings = createSettings(desktopSettingsContext, {
+    ui: mockUI,
+    onResetToolbarTimer() {},
+    isMobileSheetLayout: () => true
+  });
+  mobileSettings.attachGestureArea(gestureEl);
+  assert(registeredEvents.includes('mousedown'), 'Mobile should attach mousedown listener for preset gesture');
+  Object.defineProperty(global.navigator, 'maxTouchPoints', { value: origTouchPoints, configurable: true, writable: true });
+  Object.defineProperty(global.navigator, 'userAgent', { value: origUserAgent, configurable: true, writable: true });
+  console.log('✓ Desktop mouse drag preset handler safely guarded against accidental theme switching.');
+
+  console.log('\n--- 32. Reader: Ruler pageY === 0 coordinate handling (F-21) ---');
+  const rulerEl = {
+    style: {
+      height: '',
+      transform: ''
+    }
+  };
+  const readerContentEl = {
+    contains: () => false
+  };
+  const rulerContext = createAppContext({
+    readingRuler: rulerEl,
+    readerContent: readerContentEl
+  });
+  rulerContext.runtime.reader.isRulerActive = true;
+  const rulerReader = createReader(rulerContext, {
+    ui: mockUI
+  });
+
+  // Call with pageY: 0 (top of viewport/document)
+  rulerReader.updateRulerPosition({ target: null, pageY: 0 });
+  assert.strictEqual(rulerEl.style.height, '28px', 'Ruler height should be 28px for cursor/touch coordinate mode');
+  assert.strictEqual(rulerEl.style.transform, 'translate3d(0, -14px, 0)', 'Ruler transform should be calculated properly when pageY === 0');
+
+  // Call with touch event at pageY: 0
+  rulerEl.style.transform = '';
+  rulerReader.updateRulerPosition({ target: null, touches: [{ pageY: 0 }] });
+  assert.strictEqual(rulerEl.style.transform, 'translate3d(0, -14px, 0)', 'Ruler transform should be calculated properly for touch with pageY === 0');
+  console.log('✓ Reading ruler correctly positions at pageY === 0 without ignoring falsy zero coordinate.');
+
+  console.log('\n--- 33. State & UI: activeFileName declared and populated from handleFile for downloads (F-10 / F-15) ---');
+  const initialCtx = createAppContext();
+  assert('activeFileName' in initialCtx.state, 'state.activeFileName must be declared in initial app state');
+  assert.strictEqual(initialCtx.state.activeFileName, '', 'state.activeFileName defaults to empty string');
+
+  const flowCtx = createAppContext();
+  const flowUI = { ...mockUI };
+  let flowReader;
+  const flowParser = parser.createParser(flowCtx, {
+    ui: flowUI,
+    onTextLoaded: (text, fileName) => flowReader.loadTextFlow(text, 'file', fileName)
+  });
+  flowReader = createReader(flowCtx, {
+    ui: flowUI,
+    parser,
+    tts: mockTTS,
+    getSettings: mockSettings
+  });
+
+  const uploadEvent = {
+    target: {
+      files: [{ name: 'financial-quarterly-report.txt', size: 25, _content: 'Sample financial statement.' }],
+      value: 'financial-quarterly-report.txt'
+    }
+  };
+  await flowParser.handleFile(uploadEvent);
+  assert.strictEqual(flowCtx.state.activeFileName, 'financial-quarterly-report.txt', 'activeFileName must be set from uploaded file name');
+  const flowDownloadUI = uiModule.createUI(flowCtx);
+  const derivedName = flowDownloadUI.getDownloadFilename();
+  assert(derivedName.startsWith('financial-quarterly-report_'), `Expected filename derived from uploaded file name, got: ${derivedName}`);
+  console.log('✓ activeFileName declared in state and derived for download from uploaded file name.');
+
+  console.log('\n--- 34. PWA: sw.js precache excludes heavy PDF.js bundles (F-19) ---');
+  const swCode = fs.readFileSync(path.join(__dirname, '../sw.js'), 'utf8');
+  assert(!swCode.includes("'./vendor/pdf.min.mjs'"), 'sw.js APP_SHELL must not precache vendor/pdf.min.mjs');
+  assert(!swCode.includes("'./vendor/pdf.worker.min.mjs'"), 'sw.js APP_SHELL must not precache vendor/pdf.worker.min.mjs');
+  assert(!swCode.includes("'./vendor/pdf.min.js'"), 'sw.js APP_SHELL must not precache vendor/pdf.min.js');
+  assert(!swCode.includes("'./vendor/pdf.worker.min.js'"), 'sw.js APP_SHELL must not precache vendor/pdf.worker.min.js');
+  assert(swCode.includes("cacheFirst"), 'sw.js must provide cacheFirst runtime caching for vendor assets');
+  console.log('✓ sw.js APP_SHELL precache excludes heavy PDF.js bundles.');
+
+  console.log('\n--- 35. TTS: Fallback estimate timer execution with startingChunkIndex (F-06) ---');
+  const timerContext = createAppContext({
+    voiceRateInput: { value: '1.0' },
+    readerContent: { querySelectorAll: () => [], contains: () => true }
+  });
+  timerContext.runtime.tts.supported = true;
+  let uttered = null;
+  timerContext.runtime.tts.synth = {
+    speak(u) { uttered = u; },
+    cancel() {},
+    pause() {},
+    resume() {}
+  };
+  timerContext.runtime.tts.wordMeta = [
+    { start: 0, end: 5, index: 0 },
+    { start: 6, end: 11, index: 1 }
+  ];
+  timerContext.runtime.tts.wordSpans = [
+    { classList: makeClassList2(), scrollIntoView() {} },
+    { classList: makeClassList2(), scrollIntoView() {} }
+  ];
+  timerContext.runtime.tts.fullSpokenText = 'hello world';
+  const estimateTTS = tts.createTTS(timerContext, { ui: mockUI });
+  estimateTTS.startSpeech(0);
+  assert(uttered, 'Utterance must be dispatched');
+  uttered.onstart();
+  await new Promise(r => setTimeout(r, 120));
+  assert.strictEqual(timerContext.runtime.tts.state, 'playing');
+  estimateTTS.stopTTS();
+  console.log('✓ TTS startEstimateTimer runs without ReferenceError on startingChunkIndex.');
 
   console.log('\n====================================================');
   console.log('ALL REGRESSION TESTS PASSED SUCCESSFULLY');

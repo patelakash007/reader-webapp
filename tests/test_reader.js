@@ -8,6 +8,7 @@ const path = require('node:path');
   const parser = await import('../src/parser.mjs');
   const tts = await import('../src/tts.mjs');
   const constants = await import('../src/constants.mjs');
+  const { createAppContext } = await import('../src/context.mjs');
   const scriptSource = fs.readFileSync(path.join(__dirname, '../script.js'), 'utf8');
 
   console.log('--- Running Reader & TTS Unit and Integration Tests ---');
@@ -15,6 +16,8 @@ const path = require('node:path');
   assert(!scriptSource.includes('.substr('), 'script.js should not contain deprecated String.prototype.substr calls');
   assert(scriptSource.includes("import('./src/app.mjs')"), 'script.js should dynamically import the ES module application entry');
   assert(!scriptSource.includes('speechGeneration'), 'speech session state should not leak into the compatibility shim');
+  const initialContext = createAppContext({});
+  assert.strictEqual(initialContext.state.textSource, 'paste', 'state.textSource must initialize to paste');
   console.log('✓ Check 1: Compatibility entry and module contract validation passed.');
 
   const short = 'This is a short sample sentence.';

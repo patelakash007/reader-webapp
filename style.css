@@ -35,6 +35,8 @@
   .theme-carbon { --bg: #121212; --card: #1e1e1e; --text: #e0e0e0; --text2: #888888; --accent: #bb86fc; --ui-positive: #4ade80; --toolbar-bg: rgba(30,30,30,0.95); --reader-text-color: #e0e0e0; }
 
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  .reader-content[hidden] { display: none !important; }
   html, body {
     margin: 0; padding: 0;
     overflow-x: hidden;
@@ -1069,7 +1071,6 @@
   .reader-editor.fs-medium { font-size: 19.5px; }
   .reader-editor.fs-large { font-size: 23px; }
   .reader-editor.fs-xl { font-size: 27px; }
-  .reader-editor[hidden] { display: none !important; }
 
   .reader-status-message {
     position: fixed;

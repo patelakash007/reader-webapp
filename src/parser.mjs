@@ -8,6 +8,7 @@ import {
 import {
   assertActiveFileRead,
   beginFileRead,
+  cancelPendingFileRead,
   cancelPendingRender,
   formatError,
   escapeHtml,
@@ -55,11 +56,12 @@ export function normalizeSafeLinkHref(escapedUrl) {
 
 export function isSmartHeading(trimmed) {
   if (typeof trimmed !== 'string' || trimmed.length < 3 || trimmed.length > 55) return false;
-  if (!/^[A-Z][A-Z0-9\s:—–-]{2,55}[A-Z0-9]$/.test(trimmed)) return false;
-  if (/^[A-Z0-9]{2,6}(?:\s+(?:AND|OR|&|\/)\s+[A-Z0-9]{2,6})+$/i.test(trimmed)) return false;
+  if (/[\r\n]/.test(trimmed)) return false;
+  if (!/^[A-Z][A-Z0-9 \t:—–-]{2,55}[A-Z0-9]$/.test(trimmed)) return false;
+  if (/^[A-Z0-9]{2,6}(?:[ \t]+(?:AND|OR|&|\/)[ \t]+[A-Z0-9]{2,6})+$/i.test(trimmed)) return false;
   if (/[.!?]$/.test(trimmed)) return false;
   if (/^(?:PLEASE|NOTE|WARNING|CAUTION|DO NOT|NOTICE)\b/i.test(trimmed)) return false;
-  const words = trimmed.split(/\s+/);
+  const words = trimmed.split(/[ \t]+/);
   return words.some(w => w.length >= 4) || words.length >= 2;
 }
 
@@ -107,112 +109,98 @@ export function createMarkedInstance() {
 
 const defaultMarkedInstance = createMarkedInstance();
 
+function countNewlines(str) {
+  if (!str) return 0;
+  let count = 0;
+  for (let i = 0; i < str.length; i++) {
+    if (str.charCodeAt(i) === 10) count++;
+  }
+  return count;
+}
+
 export function parseInline(text) {
   if (!text) return '';
   return defaultMarkedInstance.parseInline(String(text));
 }
 
 export function createMarkdownRenderer(smartHeadings = true) {
-  const marked = createMarkedInstance();
-  const htmlParts = [];
-  let buffer = [];
-  let startLineIndex = 0;
-  let inCodeBlock = false;
-  let wasPrevEmpty = true;
+  const marked = defaultMarkedInstance;
 
-  function flushBuffer() {
-    if (!buffer.length) return;
-    const blockText = buffer.join('\n');
-    buffer = [];
-    if (!blockText.trim()) return;
+  function tokenize(text) {
+    const tokens = marked.lexer(String(text || ''));
+    let currentLine = 0;
+    const usedHeadingIds = new Set();
 
-    const trimmed = blockText.trim();
-    if (smartHeadings && isSmartHeading(trimmed)) {
-      htmlParts.push(`<h2 id="heading-${startLineIndex}">${escapeHtml(trimmed)}</h2>\n`);
-      return;
-    }
-
-    const tokens = marked.lexer(blockText);
-    let headingCounter = 0;
-    tokens.forEach(token => {
-      if (token.type === 'heading') {
-        token.headingId = headingCounter === 0 ? `heading-${startLineIndex}` : `heading-${startLineIndex}-${headingCounter}`;
-        headingCounter += 1;
-      }
-    });
-    const html = marked.parser(tokens);
-    if (html) htmlParts.push(html);
-  }
-
-  function processLine(rawLine, index) {
-    const trimmed = rawLine.trim();
-
-    if (trimmed.startsWith('```')) {
-      if (inCodeBlock) {
-        buffer.push(rawLine);
-        flushBuffer();
-        inCodeBlock = false;
-        wasPrevEmpty = false;
-        return;
-      } else {
-        flushBuffer();
-        inCodeBlock = true;
-        startLineIndex = index;
-        buffer.push(rawLine);
-        wasPrevEmpty = false;
-        return;
+    function assignHeadingId(token, lineIndex) {
+      if (token.type === 'heading' && !token.headingId) {
+        let id = `heading-${lineIndex}`;
+        if (usedHeadingIds.has(id)) {
+          let counter = 1;
+          while (usedHeadingIds.has(`${id}-${counter}`)) {
+            counter += 1;
+          }
+          id = `${id}-${counter}`;
+        }
+        usedHeadingIds.add(id);
+        token.headingId = id;
       }
     }
 
-    if (inCodeBlock) {
-      buffer.push(rawLine);
-      return;
+    function processTokenList(list, baseLine) {
+      for (const token of list) {
+        const line = baseLine !== undefined ? baseLine : currentLine;
+        if (baseLine === undefined && token.raw) {
+          currentLine += countNewlines(token.raw);
+        }
+
+        if (smartHeadings && token.type === 'paragraph' && baseLine === undefined) {
+          if (token.text && !token.text.includes('\n') && !token.text.includes('\r') && isSmartHeading(token.text.trim())) {
+            token.type = 'heading';
+            token.depth = 2;
+          }
+        }
+
+        assignHeadingId(token, line);
+
+        if (token.tokens && token.type !== 'paragraph' && token.type !== 'heading') {
+          processTokenList(token.tokens, line);
+        }
+        if (token.items) {
+          for (const item of token.items) {
+            if (item.tokens) processTokenList(item.tokens, line);
+          }
+        }
+      }
     }
 
-    if (trimmed === '') {
-      flushBuffer();
-      wasPrevEmpty = true;
-      return;
-    }
-
-    if (trimmed === '---' || trimmed === '***') {
-      flushBuffer();
-      htmlParts.push('<hr>\n');
-      wasPrevEmpty = false;
-      return;
-    }
-
-    if (buffer.length === 0) {
-      startLineIndex = index;
-    }
-
-    if (/^#{1,6}\s+/.test(trimmed) || (smartHeadings && wasPrevEmpty && isSmartHeading(trimmed))) {
-      flushBuffer();
-      startLineIndex = index;
-    }
-
-    buffer.push(rawLine);
-    wasPrevEmpty = false;
+    processTokenList(tokens);
+    return tokens;
   }
 
-  function flushParts() {
-    flushBuffer();
-    const html = htmlParts.join('');
-    htmlParts.length = 0;
-    return html;
+  function renderTokens(tokensSlice, links) {
+    if (!tokensSlice || !tokensSlice.length) return '';
+    if (links && !tokensSlice.links) {
+      tokensSlice.links = links;
+    }
+    return marked.parser(tokensSlice);
   }
 
-  function finish() {
-    return flushParts();
+  function render(text) {
+    const tokens = tokenize(text);
+    return renderTokens(tokens, tokens.links);
   }
 
-  return { finish, flushParts, processLine };
+  return {
+    marked,
+    tokenize,
+    renderTokens,
+    render
+  };
 }
 
 export function parseMarkdownToHtml(text, smartHeadings = true) {
   const renderer = createMarkdownRenderer(smartHeadings);
-  String(text || '').split('\n').forEach((line, index) => renderer.processLine(line, index));
-  return renderer.finish();
+  return renderer.render(text);
 }
 
 export function getExtension(fileName) {
@@ -228,14 +216,29 @@ export function enforceExtractedTextLimit(text, context = 'document') {
   return value;
 }
 
+export function decodeTextBuffer(buffer) {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer || 0);
+  if (!bytes.length) return '';
+
+  if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+    return new TextDecoder('utf-8').decode(bytes.subarray(3));
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+    return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+    return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+  }
+
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch (err) {
+    return new TextDecoder('windows-1252').decode(bytes);
+  }
+}
+
 function readFileAsText(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = event => resolve(event.target.result || '');
-    reader.onerror = () => reject(reader.error || new Error('The file could not be read.'));
-    reader.onabort = () => reject(new Error('The file read was cancelled.'));
-    reader.readAsText(file);
-  });
+  return readFileAsArrayBuffer(file).then(buffer => decodeTextBuffer(buffer));
 }
 
 function readFileAsArrayBuffer(file) {
@@ -324,7 +327,9 @@ export function createParser(context, { ui, onTextLoaded }) {
             }
             return pdfLib;
           }
-        } catch (err) {}
+        } catch (err) {
+          console.warn('PDF.js ESM build failed to load, falling back to legacy bundle.', err);
+        }
       }
 
       if (name === 'mammoth' && typeof window === 'undefined') {
@@ -495,7 +500,7 @@ export function createParser(context, { ui, onTextLoaded }) {
       const text = await readSelectedFile(file, extension, readToken);
       assertActiveFileRead(context, readToken);
       ui.hideLoader();
-      onTextLoaded(text);
+      onTextLoaded(text, file.name);
     } catch (err) {
       if (isStaleReadError(err) || !isActiveFileRead(context, readToken)) return;
       ui.hideLoader();

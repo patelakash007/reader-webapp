@@ -211,17 +211,77 @@ export function createTTS(context, { ui }) {
     session.currentWordIndex = -1;
   }
 
+  function findWordIndexByChar(absIndex) {
+    const meta = session.wordMeta;
+    if (!meta.length || absIndex < meta[0].start) return -1;
+    let low = 0;
+    let high = meta.length - 1;
+    let best = -1;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      const m = meta[mid];
+      if (m.start <= absIndex) {
+        if (absIndex < m.end) return mid;
+        best = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+    return best;
+  }
+
+  function findFirstWordEndingAfter(charOffset) {
+    const meta = session.wordMeta;
+    if (!meta.length) return -1;
+    let low = 0;
+    let high = meta.length - 1;
+    let best = -1;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      if (meta[mid].end > charOffset) {
+        best = mid;
+        high = mid - 1;
+      } else {
+        low = mid + 1;
+      }
+    }
+    return best;
+  }
+
   function highlightAtIndex(absIndex) {
     if (!session.wordMeta.length) return;
-    let index = session.wordMeta.findIndex(word => absIndex >= word.start && absIndex < word.end);
-    if (index === -1) {
-      for (let i = session.wordMeta.length - 1; i >= 0; i -= 1) {
-        if (session.wordMeta[i].start <= absIndex) {
-          index = i;
-          break;
+
+    // Fast-path short-circuits: check current word and next word
+    const curr = session.currentWordIndex;
+    if (curr >= 0 && curr < session.wordMeta.length) {
+      const w = session.wordMeta[curr];
+      if (absIndex >= w.start && absIndex < w.end) return;
+      if (curr + 1 < session.wordMeta.length) {
+        const next = session.wordMeta[curr + 1];
+        if (absIndex >= next.start && absIndex < next.end) {
+          if (session.wordSpans[curr]) session.wordSpans[curr].classList.remove('active');
+          session.currentWordIndex = curr + 1;
+          const nextSpan = session.wordSpans[curr + 1];
+          if (nextSpan) {
+            nextSpan.classList.add('active');
+            const rect = typeof nextSpan.getBoundingClientRect === 'function' ? nextSpan.getBoundingClientRect() : null;
+            const viewportHeight = typeof window !== 'undefined' ? (window.innerHeight || document.documentElement?.clientHeight || 800) : 800;
+            const needsScroll = !rect || rect.top < 80 || rect.bottom > (viewportHeight - 100);
+            if (needsScroll) {
+              const rate = parseFloat(els.voiceRateInput ? els.voiceRateInput.value : '1.0') || 1.0;
+              const scrollBehavior = rate > 1.5 ? 'auto' : 'smooth';
+              try { nextSpan.scrollIntoView({ block: 'nearest', behavior: scrollBehavior }); } catch (err) {
+                if (typeof nextSpan.scrollIntoView === 'function') nextSpan.scrollIntoView();
+              }
+            }
+          }
+          return;
         }
       }
     }
+
+    const index = findWordIndexByChar(absIndex);
     if (index === -1 || index === session.currentWordIndex) return;
     if (session.currentWordIndex >= 0 && session.wordSpans[session.currentWordIndex]) {
       session.wordSpans[session.currentWordIndex].classList.remove('active');
@@ -231,15 +291,20 @@ export function createTTS(context, { ui }) {
     if (!span) return;
     span.classList.add('active');
     const rect = typeof span.getBoundingClientRect === 'function' ? span.getBoundingClientRect() : null;
-    const viewportHeight = typeof window !== 'undefined' ? (window.innerHeight || document.documentElement.clientHeight || 800) : 800;
-    const topComfort = 80;
-    const bottomComfort = viewportHeight - 100;
-    const needsScroll = !rect || rect.top < topComfort || rect.bottom > bottomComfort;
-    if (needsScroll) {
-      const rate = parseFloat(els.voiceRateInput ? els.voiceRateInput.value : '1.0') || 1.0;
-      const scrollBehavior = rate > 1.5 ? 'auto' : 'smooth';
+    if (rect) {
+      const viewportHeight = typeof window !== 'undefined' ? (window.innerHeight || 800) : 800;
+      if (rect.top < 80 || rect.bottom > (viewportHeight - 100)) {
+        const rate = els.voiceRateInput ? (parseFloat(els.voiceRateInput.value) || 1.0) : 1.0;
+        const scrollBehavior = rate > 1.5 ? 'auto' : 'smooth';
+        try {
+          span.scrollIntoView({ block: 'nearest', behavior: scrollBehavior });
+        } catch (err) {
+          if (typeof span.scrollIntoView === 'function') span.scrollIntoView();
+        }
+      }
+    } else {
       try {
-        span.scrollIntoView({ block: 'nearest', behavior: scrollBehavior });
+        span.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       } catch (err) {
         if (typeof span.scrollIntoView === 'function') span.scrollIntoView();
       }
@@ -269,7 +334,11 @@ export function createTTS(context, { ui }) {
     if (!session.supported || !els.voiceSelect) return;
     const list = session.synth.getVoices();
     if (!list || !list.length) return;
-    session.voices = deduplicateAndSortVoices(Array.from(list));
+    const sorted = deduplicateAndSortVoices(Array.from(list));
+    const signature = sorted.map(v => `${v.voiceURI || v.name}|${v.lang}`).join(';');
+    if (signature && signature === session.voicesSignature) return;
+    session.voicesSignature = signature;
+    session.voices = sorted;
     const previousSelection = els.voiceSelect.value || '';
     els.voiceSelect.innerHTML = '';
     session.voices.forEach((voice, index) => {
@@ -290,7 +359,12 @@ export function createTTS(context, { ui }) {
     const intervalId = setInterval(() => {
       elapsed += VOICE_POLL_MS;
       populateVoices();
-      if (session.voices.length || elapsed >= VOICE_POLL_TIMEOUT) clearInterval(intervalId);
+      if (session.voices.length || elapsed >= VOICE_POLL_TIMEOUT) {
+        clearInterval(intervalId);
+        if (session.voices.length && session.synth && 'onvoiceschanged' in session.synth) {
+          session.synth.onvoiceschanged = null;
+        }
+      }
     }, VOICE_POLL_MS);
   }
 
@@ -312,9 +386,10 @@ export function createTTS(context, { ui }) {
     if (!session.wordMeta.length) return;
     const rate = clampNumber(els.voiceRateInput ? els.voiceRateInput.value : '1.0', 1.0, 0.5, 2.5);
     const startingChunkIndex = session.chunkIndex;
-    const firstWord = session.wordMeta.findIndex(word => word.end > chunk.start);
+    const firstWord = findFirstWordEndingAfter(chunk.start);
     const firstWordIndex = firstWord === -1 ? session.wordMeta.length - 1 : firstWord;
-    const lastWord = session.wordMeta.reduce((last, word, index) => word.start < chunk.end ? index : last, firstWordIndex);
+    const lastWordIdx = findWordIndexByChar(chunk.end - 1);
+    const lastWord = lastWordIdx >= firstWordIndex ? lastWordIdx : firstWordIndex;
     let elapsed = 0;
     if (firstWordIndex >= 0 && firstWordIndex < session.wordMeta.length) highlightAtIndex(session.wordMeta[firstWordIndex].start);
 
@@ -360,6 +435,7 @@ export function createTTS(context, { ui }) {
     const playing = nextState === STATE_PLAYING;
     const paused = nextState === STATE_PAUSED;
     session.isSpeaking = playing || paused;
+    session.pausedAt = paused ? (session.pausedAt || Date.now()) : 0;
 
     if (els.ttsBtn) {
       els.ttsBtn.classList.toggle('active', playing || paused);
@@ -501,8 +577,10 @@ export function createTTS(context, { ui }) {
 
   function resumeSpeech() {
     if (session.state !== STATE_PAUSED) return;
-    if (session.isMobile || session.speechCanceledWhileHidden) restartFromWord(session.currentWordIndex >= 0 ? session.currentWordIndex : 0);
-    else {
+    const isLongPause = Boolean(session.pausedAt && (Date.now() - session.pausedAt > 10000));
+    if (session.isMobile || session.speechCanceledWhileHidden || session.visibilityInterrupted || isLongPause) {
+      restartFromWord(session.currentWordIndex >= 0 ? session.currentWordIndex : 0);
+    } else {
       try { session.synth.resume(); } catch (err) {}
       setState(STATE_PLAYING);
       startKeepAliveTimer();
@@ -516,6 +594,7 @@ export function createTTS(context, { ui }) {
 
   function stopTTS() {
     if (session.finishing) return;
+    const wasActive = session.state !== STATE_IDLE;
     session.finishing = true;
     session.speechGeneration += 1;
     session.visibilityInterrupted = false;
@@ -527,9 +606,13 @@ export function createTTS(context, { ui }) {
     }
     session.currentUtterance = null;
     clearHighlight();
-    setState(STATE_IDLE);
+    if (wasActive) {
+      setState(STATE_IDLE);
+    }
     session.finishing = false;
-    ui.announceLive('Text-to-speech stopped.');
+    if (wasActive) {
+      ui.announceLive('Text-to-speech stopped.');
+    }
   }
 
   function toggleTTS() {
@@ -544,9 +627,7 @@ export function createTTS(context, { ui }) {
 
   function cycleVoiceSpeed() {
     const current = parseFloat(els.voiceRateInput ? els.voiceRateInput.value : '1.0') || 1.0;
-    let nextIndex = SPEED_STEPS.findIndex(speed => Math.abs(speed - current) < 0.05) + 1;
-    if (nextIndex >= SPEED_STEPS.length || nextIndex === 0) nextIndex = 0;
-    const nextSpeed = SPEED_STEPS[nextIndex];
+    const nextSpeed = SPEED_STEPS.find(s => s > current + 0.049) ?? SPEED_STEPS[0];
     if (els.voiceRateInput) els.voiceRateInput.value = nextSpeed;
     if (els.voiceRateVal) els.voiceRateVal.textContent = `${nextSpeed.toFixed(1)}x`;
     if (els.audioSpeedBtn) els.audioSpeedBtn.textContent = `${nextSpeed.toFixed(1)}x`;
@@ -581,7 +662,7 @@ export function createTTS(context, { ui }) {
   }
 
   function handleVisibilityChange() {
-    if (document.hidden) {
+    if (typeof document !== 'undefined' && document.hidden) {
       if (session.state === STATE_PLAYING) {
         session.visibilityInterrupted = true;
         stopKeepAliveTimer();
@@ -593,7 +674,7 @@ export function createTTS(context, { ui }) {
         }
         setState(STATE_PAUSED);
       }
-    } else if (session.visibilityInterrupted) session.visibilityInterrupted = false;
+    }
   }
 
   function bindEvents() {
@@ -632,14 +713,26 @@ export function createTTS(context, { ui }) {
   function initializeVoices() {
     if (!session.supported || !session.synth) return;
     populateVoices();
-    if ('onvoiceschanged' in session.synth) session.synth.onvoiceschanged = populateVoices;
-    pollVoices();
+    if (session.voices.length) {
+      if ('onvoiceschanged' in session.synth) session.synth.onvoiceschanged = null;
+    } else {
+      if ('onvoiceschanged' in session.synth) {
+        session.synth.onvoiceschanged = () => {
+          populateVoices();
+          if (session.voices.length && 'onvoiceschanged' in session.synth) {
+            session.synth.onvoiceschanged = null;
+          }
+        };
+      }
+      pollVoices();
+    }
   }
 
   return {
     bindEvents,
     initializeVoices,
     cycleVoiceSpeed,
+    findWordIndexByChar,
     getSession: () => session,
     highlightAtIndex,
     invalidateTokenization,

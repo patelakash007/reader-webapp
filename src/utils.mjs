@@ -27,11 +27,17 @@ export function clampIndex(index, length) {
 }
 
 export function getElementTarget(target) {
-  return typeof Element !== 'undefined' && target instanceof Element ? target : null;
+  if (!target) return null;
+  if (typeof Element !== 'undefined' && target instanceof Element) return target;
+  if (typeof Node !== 'undefined' && target instanceof Node) {
+    return target.nodeType === 1 ? target : target.parentElement;
+  }
+  return (target.nodeType === 1 || typeof target.closest === 'function') ? target : null;
 }
 
 export function getScrollTop() {
-  return window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+  if (typeof window === 'undefined') return 0;
+  return window.pageYOffset || (typeof document !== 'undefined' && (document.documentElement?.scrollTop || document.body?.scrollTop)) || 0;
 }
 
 export function isMobileDevice() {

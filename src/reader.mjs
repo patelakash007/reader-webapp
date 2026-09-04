@@ -22,44 +22,48 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     if (shouldShowLoader) ui.showLoader('Preparing reader...');
     els.readerContent.textContent = '';
 
-    const lines = text.split('\n');
     const renderer = createMarkdownRenderer(state.smartHeadings);
+    let tokens = [];
+    try {
+      tokens = renderer.tokenize(text);
+    } catch (err) {
+      if (renderId !== runtime.reader.activeRenderId) return;
+      if (shouldShowLoader) ui.hideLoader();
+      ui.showStatus(`Could not render this text safely: ${err && err.message ? err.message : 'Unknown error'}`, 'error');
+      return;
+    }
     let index = 0;
-
-    const flushParts = () => {
-      if (renderId !== runtime.reader.activeRenderId || !els.readerContent) return;
-      const html = renderer.flushParts();
-      if (html) els.readerContent.insertAdjacentHTML('beforeend', html);
-    };
 
     const processChunk = () => {
       if (renderId !== runtime.reader.activeRenderId) return;
       try {
         const deadline = (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()) + 12;
         let charsCount = 0;
-        while (index < lines.length && (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()) < deadline && charsCount < 30000) {
+        const startIndex = index;
+        while (index < tokens.length && (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()) < deadline && charsCount < 30000) {
           if (renderId !== runtime.reader.activeRenderId) return;
-          const line = lines[index];
-          charsCount += line.length;
-          renderer.processLine(line, index);
+          const token = tokens[index];
+          charsCount += (token.raw ? token.raw.length : (token.text ? token.text.length : 0));
           index += 1;
         }
 
-        flushParts();
+        if (index > startIndex) {
+          const chunkTokens = tokens.slice(startIndex, index);
+          chunkTokens.links = tokens.links;
+          const html = renderer.renderTokens(chunkTokens, tokens.links);
+          if (html && renderId === runtime.reader.activeRenderId && els.readerContent) {
+            els.readerContent.insertAdjacentHTML('beforeend', html);
+          }
+        }
         if (renderId !== runtime.reader.activeRenderId) return;
 
-        if (index < lines.length) {
+        if (index < tokens.length) {
           if (typeof window !== 'undefined' && window.requestAnimationFrame) {
             window.requestAnimationFrame(processChunk);
           } else {
             setTimeout(processChunk, 0);
           }
           return;
-        }
-
-        const finalHtml = renderer.finish();
-        if (finalHtml && renderId === runtime.reader.activeRenderId && els.readerContent) {
-          els.readerContent.insertAdjacentHTML('beforeend', finalHtml);
         }
         if (renderId !== runtime.reader.activeRenderId) return;
         applyTextColor();
@@ -132,7 +136,9 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
   function updateRulerPosition(event) {
     if (!runtime.reader.isRulerActive || !els.readingRuler || !els.readerContent || rulerFramePending) return;
     const target = getElementTarget(event.target);
-    const pageY = event.pageY || (event.touches && event.touches[0] ? event.touches[0].pageY : null);
+    const pageY = typeof event.pageY === 'number'
+      ? event.pageY
+      : (event.touches && event.touches[0] && typeof event.touches[0].pageY === 'number' ? event.touches[0].pageY : null);
     rulerFramePending = true;
 
     const executeUpdate = () => {
@@ -150,7 +156,7 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
         const top = lastRulerRect.top + scrollTop;
         els.readingRuler.style.height = `${lastRulerRect.height + 4}px`;
         els.readingRuler.style.transform = `translate3d(0, ${top - 2}px, 0)`;
-      } else if (pageY) {
+      } else if (typeof pageY === 'number') {
         lastRulerTarget = null;
         lastRulerRect = null;
         const y = pageY - 14;
@@ -387,7 +393,7 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     if (!els.editingBanner || !els.editBtn) return;
     runtime.reader.activeRenderId += 1;
     ui.hideLoader();
-    if (tts.getSession().isSpeaking) tts.stopTTS();
+    if (tts && typeof tts.stopTTS === 'function') tts.stopTTS();
     if (runtime.autoScroll.active) toggleAutoScroll();
     state.isEditing = true;
     if (typeof window !== 'undefined' && window.clearTimeout) {
@@ -428,13 +434,27 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
 
   function saveAndExitEditMode(options = {}) {
     if (!state.isEditing) return;
+    const rawValue = els.readerEditor ? (els.readerEditor.value || '') : '';
+    const trimmed = rawValue.trim();
+    if (!trimmed) {
+      cancelEditMode();
+      ui.showStatus('Nothing to save — edits discarded', 'info');
+      return;
+    }
+    try {
+      parser.enforceExtractedTextLimit(rawValue, 'edited text');
+    } catch (err) {
+      ui.showStatus(err && err.message ? err.message : 'Text limit exceeded.', 'error');
+      return;
+    }
+
     if (typeof window !== 'undefined' && window.clearTimeout) {
       window.clearTimeout(runtime.reader.editDebounceTimer);
       runtime.reader.editDebounceTimer = null;
     }
     state.isEditing = false;
+    state.currentText = rawValue;
     if (els.readerEditor) {
-      state.currentText = els.readerEditor.value;
       els.readerEditor.hidden = true;
     }
     if (els.readerContent) els.readerContent.hidden = false;
@@ -577,14 +597,14 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
 
   function goBack() {
     cancelPendingFileRead(context);
-    cancelPendingRender(context, { clearContent: false });
+    cancelPendingRender(context, { clearContent: true });
+    if (els.wordCount) els.wordCount.textContent = '';
+    state.activeFileName = '';
     if (state.isEditing) {
       cancelEditMode();
     }
     if (tts && typeof tts.invalidateTokenization === 'function') {
       tts.invalidateTokenization();
-    } else if (tts.getSession().isSpeaking) {
-      tts.stopTTS();
     }
     if (runtime.autoScroll.active) toggleAutoScroll();
     if (runtime.reader.isRulerActive) setRulerActive(false, { announce: false });
@@ -622,7 +642,7 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     if (els.progressBar) els.progressBar.style.width = '0%';
   }
 
-  function loadTextFlow(text, source = 'file') {
+  function loadTextFlow(text, source = 'file', fileName = '') {
     if (!text || !text.trim()) {
       ui.showStatus('Provide text input or upload a file first.', 'error');
       return;
@@ -636,6 +656,7 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     }
     ui.clearStatus();
     state.textSource = source;
+    state.activeFileName = source === 'file' ? (fileName || '') : '';
     state.currentText = safeText;
     renderTextAsync(state.currentText, enterReader);
   }
@@ -715,16 +736,32 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
       }, { passive: true });
       els.readerContent.addEventListener('click', event => {
         if (state.isEditing) return;
-        const target = getElementTarget(event.target);
-        if (!target) return;
-        // Lazy tokenization: tokenize if not tokenized yet
-        if (!tts.getSession().wordMeta.length) {
-          tts.tokenize();
+        const session = tts && typeof tts.getSession === 'function' ? tts.getSession() : null;
+        if (!session || !session.supported) return;
+
+        if (typeof window !== 'undefined' && window.getSelection) {
+          const selection = window.getSelection();
+          if (selection && (!selection.isCollapsed || (selection.toString && selection.toString().length > 0))) {
+            return;
+          }
         }
-        const wordElement = target.closest('.tts-word');
+
+        const target = getElementTarget(event.target);
+        if (!target || target.closest('a, button')) return;
+
+        let currentTarget = target;
+        // Lazy tokenization: tokenize if not tokenized yet
+        if (!session.wordMeta.length) {
+          tts.tokenize();
+          if (typeof document !== 'undefined' && typeof document.elementFromPoint === 'function' && typeof event.clientX === 'number' && typeof event.clientY === 'number') {
+            const el = document.elementFromPoint(event.clientX, event.clientY);
+            if (el) currentTarget = el;
+          }
+        }
+
+        const wordElement = currentTarget.closest('.tts-word');
         if (!wordElement || !wordElement.hasAttribute('data-word-idx')) return;
         const index = parseInt(wordElement.getAttribute('data-word-idx'), 10);
-        const session = tts.getSession();
         if (!Number.isNaN(index) && index >= 0 && index < session.wordMeta.length) tts.startSpeech(index);
       });
     }
@@ -851,6 +888,7 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     toggleMobileSheet,
     updateEditingLayoutOffset,
     updateMarginOnResize,
+    updateRulerPosition,
     updateWordCount
   };
 }

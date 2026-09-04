@@ -7,7 +7,7 @@ import {
   lightPresets,
   textColorMap
 } from './constants.mjs';
-import { clampIndex, clampNumber, escapeHtml, getElementTarget } from './utils.mjs';
+import { clampIndex, clampNumber, escapeHtml, getElementTarget, isMobileDevice } from './utils.mjs';
 
 export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheetLayout }) {
   const { els, state, runtime } = context;
@@ -297,28 +297,30 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
       if (distanceX < 0) nextPreset();
       else prevPreset();
     }, { passive: true });
-    element.addEventListener('mousedown', event => {
-      if (!canStartPresetGesture(event.target)) {
+    if (isMobileDevice()) {
+      element.addEventListener('mousedown', event => {
+        if (!canStartPresetGesture(event.target)) {
+          state.isGesture = false;
+          return;
+        }
+        state.gestureStartX = event.clientX;
+        state.gestureStartY = event.clientY;
+        state.gestureStartTime = Date.now();
+        state.isGesture = true;
+      });
+      element.addEventListener('mouseup', event => {
+        if (!state.isGesture) return;
         state.isGesture = false;
-        return;
-      }
-      state.gestureStartX = event.clientX;
-      state.gestureStartY = event.clientY;
-      state.gestureStartTime = Date.now();
-      state.isGesture = true;
-    });
-    element.addEventListener('mouseup', event => {
-      if (!state.isGesture) return;
-      state.isGesture = false;
-      if (hasSelectedText() || isBlockedGestureTarget(event.target)) return;
-      const elapsed = Date.now() - state.gestureStartTime;
-      const distanceX = event.clientX - state.gestureStartX;
-      const distanceY = event.clientY - state.gestureStartY;
-      if (elapsed > 500 || Math.abs(distanceX) < 55 || Math.abs(distanceY) > Math.abs(distanceX) * 0.7) return;
-      if (distanceX < 0) nextPreset();
-      else prevPreset();
-    });
-    element.addEventListener('mouseleave', () => { state.isGesture = false; });
+        if (hasSelectedText() || isBlockedGestureTarget(event.target)) return;
+        const elapsed = Date.now() - state.gestureStartTime;
+        const distanceX = event.clientX - state.gestureStartX;
+        const distanceY = event.clientY - state.gestureStartY;
+        if (elapsed > 500 || Math.abs(distanceX) < 55 || Math.abs(distanceY) > Math.abs(distanceX) * 0.7) return;
+        if (distanceX < 0) nextPreset();
+        else prevPreset();
+      });
+      element.addEventListener('mouseleave', () => { state.isGesture = false; });
+    }
   }
 
   function isInteractiveShortcutTarget(target) {
@@ -372,9 +374,11 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
     });
     if (els.arrowLeft) els.arrowLeft.addEventListener('click', prevPreset);
     if (els.arrowRight) els.arrowRight.addEventListener('click', nextPreset);
-    els.settingsSectionToggles.forEach(toggle => {
-      toggle.addEventListener('click', () => toggleSettingsSection(toggle.closest('[data-settings-section]')));
-    });
+    if (els.settingsSectionToggles) {
+      els.settingsSectionToggles.forEach(toggle => {
+        toggle.addEventListener('click', () => toggleSettingsSection(toggle.closest('[data-settings-section]')));
+      });
+    }
     if (els.presetWindow) {
       els.presetWindow.addEventListener('touchstart', event => {
         if (event.touches.length === 1 && canStartPresetGesture(event.target)) startCarouselDrag(event.touches[0].clientX);
@@ -430,6 +434,7 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
   return {
     applyPreset,
     applyTextColor,
+    attachGestureArea,
     bindEvents,
     buildPresetCarousel,
     canUseGlobalPresetShortcut,

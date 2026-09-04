@@ -1,3 +1,29 @@
+export function deriveDownloadFilename(currentText, activeFileName) {
+  let base = '';
+  if (activeFileName && typeof activeFileName === 'string') {
+    base = activeFileName.replace(/\.[^/.]+$/, '').trim();
+  }
+  if (!base && currentText && typeof currentText === 'string') {
+    const headingMatch = currentText.match(/^#+\s+([^\r\n]+)/m);
+    if (headingMatch && headingMatch[1].trim()) {
+      base = headingMatch[1].trim();
+    }
+  }
+  if (!base) {
+    return 'Reader_Export.txt';
+  }
+  const slug = base
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '_')
+    .slice(0, 40);
+  if (!slug) {
+    return 'Reader_Export.txt';
+  }
+  const dateStr = new Date().toISOString().slice(0, 10);
+  return `${slug}_${dateStr}.txt`;
+}
+
 export function createUI(context) {
   const { els, state } = context;
 
@@ -129,6 +155,10 @@ export function createUI(context) {
     }
   }
 
+  function getDownloadFilename() {
+    return deriveDownloadFilename(state.currentText, state.activeFileName);
+  }
+
   function downloadText() {
     if (!state.currentText) {
       showStatus('No text content to download.', 'error');
@@ -141,7 +171,7 @@ export function createUI(context) {
       url = URL.createObjectURL(blob);
       anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = 'Reader_Export.txt';
+      anchor.download = getDownloadFilename();
       document.body.appendChild(anchor);
       anchor.click();
       showStatus('File downloaded successfully.', 'success');
@@ -149,7 +179,23 @@ export function createUI(context) {
       showStatus('Download failed on this device.', 'error');
     } finally {
       if (anchor && anchor.parentNode) anchor.parentNode.removeChild(anchor);
-      if (url) window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      if (url) {
+        let cleaned = false;
+        const cleanup = () => {
+          if (cleaned) return;
+          cleaned = true;
+          try { URL.revokeObjectURL(url); } catch (e) {}
+          if (typeof window !== 'undefined') {
+            window.removeEventListener('focus', cleanup);
+          }
+        };
+        if (typeof window !== 'undefined') {
+          window.addEventListener('focus', cleanup, { once: true });
+          window.setTimeout(cleanup, 60000);
+        } else {
+          try { URL.revokeObjectURL(url); } catch (e) {}
+        }
+      }
     }
   }
 
@@ -204,6 +250,7 @@ export function createUI(context) {
     clearStatus,
     closeTocDialog,
     downloadText,
+    getDownloadFilename,
     getFullscreenElement,
     handleFullscreenPromise,
     hideLoader,
