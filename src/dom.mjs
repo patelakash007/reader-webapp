@@ -60,6 +60,8 @@ export function collectElements(document) {
     sheetBackdrop: document.getElementById('sheetBackdrop'),
     bottomSheetHandle: document.getElementById('bottomSheetHandle'),
     editingBanner: document.getElementById('editingBanner'),
-    saveEditBannerBtn: document.getElementById('saveEditBannerBtn')
+    saveEditBannerBtn: document.getElementById('saveEditBannerBtn'),
+    cancelEditBannerBtn: document.getElementById('cancelEditBannerBtn'),
+    readerEditor: document.getElementById('readerEditor')
   };
 }

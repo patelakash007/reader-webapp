@@ -39,6 +39,9 @@ jobs:
             "src/app.mjs"
             "README.md"
             "LICENSE"
+            "vendor/marked.esm.mjs"
+            "vendor/pdf.min.mjs"
+            "vendor/pdf.worker.min.mjs"
             "vendor/pdf.min.js"
             "vendor/pdf.worker.min.js"
             "vendor/mammoth.browser.min.js"
@@ -72,6 +75,12 @@ jobs:
 
       - name: Validate PWA app shell
         run: npm run test:pwa
+
+      - name: Run unit & regression tests
+        run: npm run test:unit
+
+      - name: Run empirical stress tests
+        run: npm run test:empirical
 
       - name: Run browser smoke checks
         run: npm run test:smoke

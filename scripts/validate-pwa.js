@@ -8,6 +8,9 @@ const requiredPaths = [
   'index.html',
   'style.css',
   'script.js',
+  'vendor/marked.esm.mjs',
+  'vendor/pdf.min.mjs',
+  'vendor/pdf.worker.min.mjs',
   'vendor/pdf.min.js',
   'vendor/pdf.worker.min.js',
   'vendor/mammoth.browser.min.js',
@@ -19,7 +22,7 @@ const requiredPaths = [
 
 function getLocalModuleImports(relativePath) {
   const source = fs.readFileSync(path.join(rootDir, relativePath), 'utf8');
-  const imports = [...source.matchAll(/(?:import|export)\s+(?:[^'";]+?\s+from\s+)?['"](\.\/[^'"]+\.mjs)['"]/g)]
+  const imports = [...source.matchAll(/(?:import|export)\s+(?:[^'";]+?\s+from\s+)?['"](\.{1,2}\/[^'"]+\.mjs)['"]/g)]
     .map(match => path.posix.normalize(path.posix.join(path.posix.dirname(relativePath), match[1])));
   return imports;
 }

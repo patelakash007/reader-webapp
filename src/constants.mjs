@@ -6,7 +6,8 @@ export const MAX_EXTRACTED_TEXT_CHARS = 1_000_000;
 export const MAX_PDF_PAGES = 500;
 
 export const VALID_FONTS = new Set([
-  'sans', 'serif', 'minimal', 'bold', 'clean', 'literata', 'merriweather', 'libre', 'atkinson', 'jakarta', 'outfit', 'bebas', 'oswald', 'manrope', 'sora'
+  'sans', 'serif', 'system', 'mono', 'minimal', 'bold', 'clean',
+  'literata', 'merriweather', 'libre', 'atkinson', 'jakarta', 'outfit', 'bebas', 'oswald', 'manrope', 'sora'
 ]);
 
 export const VALID_THEMES = new Set([
@@ -14,49 +15,55 @@ export const VALID_THEMES = new Set([
   'dark', 'void', 'carbon', 'midnight', 'obsidian', 'dracula', 'nord', 'catppuccin', 'forest', 'ink'
 ]);
 
+const SERIF_STACK = 'Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif';
+const SANS_STACK = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+const MONO_STACK = 'ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Monaco, Consolas, monospace';
+
 export const fontMap = {
-  serif: { family: 'Georgia, "Times New Roman", serif', weight: 500, url: null },
-  sans: { family: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', weight: 600, url: null },
-  minimal: { family: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', weight: 700, url: null },
-  bold: { family: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', weight: 800, url: null },
-  clean: { family: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', weight: 700, url: null },
-  literata: { family: 'Georgia, "Times New Roman", serif', weight: 700, url: null },
-  merriweather: { family: 'Georgia, "Times New Roman", serif', weight: 700, url: null },
-  libre: { family: 'Georgia, "Times New Roman", serif', weight: 700, url: null },
-  atkinson: { family: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', weight: 700, url: null },
-  jakarta: { family: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', weight: 700, url: null },
-  outfit: { family: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', weight: 700, url: null },
-  bebas: { family: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', weight: 700, url: null },
-  oswald: { family: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', weight: 700, url: null },
-  manrope: { family: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', weight: 700, url: null },
-  sora: { family: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', weight: 700, url: null },
-  mono: { family: 'ui-monospace, SFMono-Regular, Consolas, monospace', weight: 600, url: null }
+  serif: { family: SERIF_STACK, weight: 600, url: null },
+  sans: { family: SANS_STACK, weight: 600, url: null },
+  system: { family: SANS_STACK, weight: 600, url: null },
+  mono: { family: MONO_STACK, weight: 600, url: null },
+  minimal: { family: SANS_STACK, weight: 500, url: null },
+  bold: { family: SANS_STACK, weight: 700, url: null },
+  clean: { family: SANS_STACK, weight: 600, url: null },
+  // Backward-compatible aliases for previously named presets
+  literata: { family: SERIF_STACK, weight: 600, url: null },
+  merriweather: { family: SERIF_STACK, weight: 700, url: null },
+  libre: { family: SERIF_STACK, weight: 600, url: null },
+  atkinson: { family: SANS_STACK, weight: 600, url: null },
+  jakarta: { family: SANS_STACK, weight: 600, url: null },
+  outfit: { family: SANS_STACK, weight: 600, url: null },
+  bebas: { family: SANS_STACK, weight: 700, url: null },
+  oswald: { family: SANS_STACK, weight: 700, url: null },
+  manrope: { family: SANS_STACK, weight: 600, url: null },
+  sora: { family: SANS_STACK, weight: 600, url: null }
 };
 
 export const lightPresets = [
-  { name: 'Claude', font: 'sans', theme: 'claude', color: 'default', desc: 'Clean warm like Claude.ai' },
-  { name: 'Zen', font: 'outfit', theme: 'zen', color: 'default', desc: 'Pure minimal white' },
-  { name: 'Stark', font: 'sora', theme: 'stark', color: 'high', desc: 'Bold high contrast' },
-  { name: 'Book', font: 'literata', theme: 'paper', color: 'warm', desc: 'Long-form book reading' },
-  { name: 'Classic', font: 'merriweather', theme: 'cream', color: 'default', desc: 'Traditional print feel' },
-  { name: 'Kindle', font: 'merriweather', theme: 'kindle', color: 'warm', desc: 'E-ink sepia warmth' },
-  { name: 'GitHub', font: 'sans', theme: 'github', color: 'default', desc: 'Developer favourite' },
-  { name: 'Amber', font: 'atkinson', theme: 'amber', color: 'high', desc: 'High contrast warm' },
-  { name: 'Newspaper', font: 'merriweather', theme: 'newspaper', color: 'default', desc: 'Old school print' },
-  { name: 'Lavender', font: 'clean', theme: 'lavender', color: 'default', desc: 'Soft purple calm' }
+  { name: 'Claude', font: 'sans', theme: 'claude', color: 'default', desc: 'Clean warm system sans' },
+  { name: 'Zen', font: 'sans', theme: 'zen', color: 'default', desc: 'Pure minimal white' },
+  { name: 'Stark', font: 'sans', theme: 'stark', color: 'high', desc: 'Bold high contrast' },
+  { name: 'Book', font: 'serif', theme: 'paper', color: 'warm', desc: 'Long-form book reading' },
+  { name: 'Classic', font: 'serif', theme: 'cream', color: 'default', desc: 'Traditional print feel' },
+  { name: 'Kindle', font: 'serif', theme: 'kindle', color: 'warm', desc: 'E-ink sepia warmth' },
+  { name: 'GitHub', font: 'mono', theme: 'github', color: 'default', desc: 'Developer monospace' },
+  { name: 'Amber', font: 'sans', theme: 'amber', color: 'high', desc: 'High contrast warm' },
+  { name: 'Newspaper', font: 'serif', theme: 'newspaper', color: 'default', desc: 'Old school print' },
+  { name: 'Lavender', font: 'sans', theme: 'lavender', color: 'default', desc: 'Soft purple calm' }
 ];
 
 export const darkPresets = [
   { name: 'Night', font: 'sans', theme: 'dark', color: 'soft', desc: 'Deep black OLED' },
-  { name: 'Void', font: 'sora', theme: 'void', color: 'soft', desc: 'Pure black void' },
-  { name: 'Carbon', font: 'minimal', theme: 'carbon', color: 'soft', desc: 'Material dark grey' },
-  { name: 'Midnight', font: 'libre', theme: 'midnight', color: 'soft', desc: 'Purple dark elegance' },
+  { name: 'Void', font: 'sans', theme: 'void', color: 'soft', desc: 'Pure black void' },
+  { name: 'Carbon', font: 'sans', theme: 'carbon', color: 'soft', desc: 'Material dark grey' },
+  { name: 'Midnight', font: 'serif', theme: 'midnight', color: 'soft', desc: 'Purple dark elegance' },
   { name: 'Obsidian', font: 'sans', theme: 'obsidian', color: 'soft', desc: 'Note app dark' },
-  { name: 'Dracula', font: 'minimal', theme: 'dracula', color: 'soft', desc: 'Famous code dark' },
-  { name: 'Nord', font: 'jakarta', theme: 'nord', color: 'soft', desc: 'Arctic blue dark' },
-  { name: 'Catppuccin', font: 'clean', theme: 'catppuccin', color: 'soft', desc: 'Pastel dark cozy' },
-  { name: 'Forest', font: 'jakarta', theme: 'forest', color: 'soft', desc: 'Green night easy' },
-  { name: 'Ink', font: 'literata', theme: 'ink', color: 'soft', desc: 'Navy scholarly' }
+  { name: 'Dracula', font: 'mono', theme: 'dracula', color: 'soft', desc: 'Famous code dark' },
+  { name: 'Nord', font: 'sans', theme: 'nord', color: 'soft', desc: 'Arctic blue dark' },
+  { name: 'Catppuccin', font: 'sans', theme: 'catppuccin', color: 'soft', desc: 'Pastel dark cozy' },
+  { name: 'Forest', font: 'sans', theme: 'forest', color: 'soft', desc: 'Green night easy' },
+  { name: 'Ink', font: 'serif', theme: 'ink', color: 'soft', desc: 'Navy scholarly' }
 ];
 
 export const textColorMap = {

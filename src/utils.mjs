@@ -34,6 +34,18 @@ export function getScrollTop() {
   return window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
 }
 
+export function isMobileDevice() {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  const hasTouch = (navigator.maxTouchPoints || 0) > 0 || 'ontouchstart' in window;
+  if (!hasTouch) return false;
+  const hasHover = window.matchMedia && window.matchMedia('(hover: hover)').matches;
+  const hasFinePointer = window.matchMedia && window.matchMedia('(pointer: fine)').matches;
+  if (hasHover && hasFinePointer) return false;
+  const isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  if (isCoarse && !hasFinePointer) return true;
+  return !hasHover;
+}
+
 export function beginFileRead(context) {
   context.runtime.file.activeReadToken += 1;
   return context.runtime.file.activeReadToken;
@@ -41,6 +53,12 @@ export function beginFileRead(context) {
 
 export function cancelPendingFileRead(context) {
   context.runtime.file.activeReadToken += 1;
+  if (context.runtime.file.activeLoadingTask && typeof context.runtime.file.activeLoadingTask.destroy === 'function') {
+    try {
+      context.runtime.file.activeLoadingTask.destroy();
+    } catch (err) {}
+    context.runtime.file.activeLoadingTask = null;
+  }
 }
 
 export function isActiveFileRead(context, readToken) {

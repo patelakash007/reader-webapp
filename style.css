@@ -378,6 +378,19 @@
     font-family: var(--body-font); font-weight: var(--heading-weight);
     color: var(--reader-text-color); margin: 1.4em 0 0.4em; line-height: 1.35; font-size: 1.15em;
   }
+  .reader-content h4 {
+    font-family: var(--body-font); font-weight: var(--heading-weight);
+    color: var(--reader-text-color); margin: 1.3em 0 0.35em; line-height: 1.35; font-size: 1.05em;
+  }
+  .reader-content h5 {
+    font-family: var(--body-font); font-weight: var(--heading-weight);
+    color: var(--reader-text-color); margin: 1.2em 0 0.3em; line-height: 1.4; font-size: 0.95em;
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .reader-content h6 {
+    font-family: var(--body-font); font-weight: var(--heading-weight);
+    color: var(--text2); margin: 1.1em 0 0.25em; line-height: 1.4; font-size: 0.9em;
+  }
   .reader-content p { margin: 0 0 1.25em 0; }
   .reader-content em, .reader-content i { font-family: var(--body-font); font-style: italic; }
   .reader-content strong, .reader-content b { font-weight: 700; }
@@ -1020,6 +1033,43 @@
   .editing-banner button:active {
      transform: translateY(0);
   }
+  .editing-banner-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .editing-banner .btn-banner-cancel {
+    background: transparent;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    box-shadow: none;
+  }
+  .editing-banner .btn-banner-cancel:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .reader-editor {
+    display: block; max-width: 680px; width: 100%; margin: 0 auto; padding: 0 24px 120px;
+    box-sizing: border-box;
+    font-family: var(--body-font);
+    font-weight: 400; line-height: 1.85;
+    letter-spacing: -0.015em;
+    color: var(--reader-text-color);
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+    min-height: calc(100vh - 240px);
+    white-space: pre-wrap;
+    word-break: break-word;
+    tab-size: 2;
+  }
+  .reader-editor.fs-small { font-size: 16px; }
+  .reader-editor.fs-medium { font-size: 19.5px; }
+  .reader-editor.fs-large { font-size: 23px; }
+  .reader-editor.fs-xl { font-size: 27px; }
+  .reader-editor[hidden] { display: none !important; }
 
   .reader-status-message {
     position: fixed;

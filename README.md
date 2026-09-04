@@ -12,22 +12,28 @@ https://patelakash007.github.io/reader-webapp/
 
 ## Features
 
-- **Multi-Format Document Support**: Seamlessly parses and renders Pasted Text, plain text (`.txt`), Markdown (`.md`, `.markdown`), DOCX (`.docx` via local Mammoth.js), and PDF (`.pdf` via local PDF.js).
+- **Multi-Format Document Support**:
+  - **Markdown & Plain Text**: Full CommonMark parsing via vendored `marked` 15.0.12 with safe image fallbacks (`[Image: alt]`), secure link rendering (`target="_blank" rel="noopener noreferrer"`), raw HTML escaping, nested lists, and smart heading heuristics for all-caps titles (distinguishing section titles from short acronyms like `NASA`).
+  - **In-Context Editor**: Dedicated raw text editor (`#readerEditor`) that preserves exact user formatting, blank lines, and Markdown markup without DOM whitespace loss.
+  - **DOCX Extraction**: Client-side text extraction via local Mammoth.js. Note: extracts text content; complex table/word processing layouts are simplified for linear reading.
+  - **PDF Extraction**: Best-effort client-side text layer extraction via local PDF.js 4.10.38 ESM bundle (up to 500 pages or 1,000,000 characters). Note: scanned PDFs without OCR text layers contain no extractable text, and complex multi-column flows may reflow.
 - **Native Text-to-Speech Engine**:
-  - **Synchronized Real-Time Word Highlighting**: Active word highlighting (`.tts-word.active`) across all 20 custom theme presets.
-  - **Smart Viewport Auto-Scrolling**: Keeps narration position comfortably centered in view with tempo-aware jitter prevention at high speeds.
+  - **Synchronized Real-Time Word Highlighting**: Active word highlighting (`.tts-word.active`) across all 20 custom theme presets, with on-demand lazy tokenization to keep initial rendering fast.
+  - **Smart Viewport Auto-Scrolling**: Throttled scrolling that keeps narration within a comfortable reading band without jitter.
   - **Click-to-Speak Navigation**: Click any word or sentence in the reader view to instantly jump narration to that position.
-  - **190-Character Word-Safe Chunking**: Prevents Chromium's 15-second silent audio timeout.
-  - **Dual Boundary Tracking**: Uses native `SpeechSynthesisUtterance.onboundary` with an automatic 100ms synthetic estimate timer fallback (180 WPM × rate) for speech engines lacking boundary events.
-  - **Generation & Concurrency Safety**: Monotonic `speechGeneration` session counter rejects stale asynchronous callbacks.
-  - **Mobile Lifecycle & Android Resilience**: Desktop-only 10-second watchdog keepalive and mobile cancel-on-pause with seamless word-index resume (`restartFromWord`).
-  - **Background Audio Leak Prevention**: Tab lifecycle event listeners (`visibilitychange`, `pagehide`, `pageshow`) automatically pause and cleanly manage hidden tabs.
-  - **Voice Discovery & Persistent Selection**: Asynchronous voice polling, compound deduplication (`name + lang`), locale-aware sorting, and multi-tier persistence ladder.
-  - **Responsive Audio Controls**: Accessible Play, Pause, Resume, Stop, Voice Speed (0.5x–2.5x), and Voice Selector directly in the Listen drawer and floating bottom Audio Player Bar.
-- **20 Theme Presets & Typography Engine**: 10 Light and 10 Dark themes, typography sliders (line height, letter spacing, margins), font size presets (S/M/L/XL), and reading ruler guide.
-- **Table of Contents & In-Context Editor**: Modal TOC dialog extracted from document headings, distraction-free Focus mode, and in-place Markdown editing with session persistence.
+  - **Chromium Timeout Mitigation**: Natural sentence and clause chunking targeting ~190 characters to mitigate Chromium's 15-second speech synthesis silent stall.
+  - **Dual Boundary Tracking**: Native `SpeechSynthesisUtterance.onboundary` with an automatic 100ms synthetic estimate timer fallback (180 WPM × rate) for speech engines lacking boundary events.
+  - **Generation & Concurrency Safety**: Monotonic `speechGeneration` session counter rejects stale asynchronous callbacks; navigation or settings changes safely stop active audio.
+  - **Capability-Based Mobile Lifecycle**: Hardware capability detection (touch points, hover, fine pointer) rather than brittle user-agent matching; mobile cancel-on-pause with seamless word-index resume (`restartFromWord`).
+  - **Background Audio Leak Prevention**: Tab lifecycle listeners (`visibilitychange`, `pagehide`, `pageshow`) manage hidden tabs cleanly.
+  - **Voice Discovery & Persistent Selection**: Asynchronous voice polling, compound deduplication (`name + lang`), locale-aware sorting, and persistence ladder.
+  - **Accessible Audio Controls**: Accessible Play, Pause, Resume, Stop, Voice Speed slider with live announcements only on commit, and Voice Selector.
+- **20 Theme Presets & Honest Typography**:
+  - 10 Light and 10 Dark themes with curated system font stacks (`system-ui` sans-serif, `Charter`/`Georgia` serif, and monospace). All fonts render from local system typography with zero third-party font requests, ensuring strict CSP compliance (`font-src 'self'`) and complete privacy.
+  - Interactive reading ruler, margins, line height, and font size adjustments.
+- **Table of Contents & Navigation**: Dynamic heading extraction with smooth navigation.
 - **100% Local-First & Privacy-Focused**: All file extraction, parsing, and speech synthesis execute purely inside the browser without external network telemetry.
-- **Progressive Web App (PWA) Offline Operation**: Standalone installable PWA with Service Worker precaching of the HTML, CSS, compatibility entry, ES modules, local parser bundles, manifest, and icons.
+- **Progressive Web App (PWA) Offline Operation**: Standalone installable PWA with Service Worker precaching the complete local application shell and vendor libraries, with same-origin scope-gated navigation and query-parameter normalization for offline launch.
 
 ## Project structure
 
@@ -43,14 +49,21 @@ reader-webapp/
 |   `-- maskable-512.png
 |-- scripts/
 |   |-- browser-smoke-utils.js
+|   |-- check-syntax.js
 |   |-- deep-playwright.js
 |   |-- smoke-chromium.js
 |   |-- smoke-playwright.js
 |   `-- validate-pwa.js
 |-- tests/
-|   `-- test_reader.js
+|   |-- test_reader.js
+|   |-- test_tts_controller.js
+|   |-- test_empirical_stress.js
+|   `-- test_regressions.js
 |-- vendor/
 |   |-- mammoth.browser.min.js
+|   |-- marked.esm.mjs
+|   |-- pdf.min.mjs
+|   |-- pdf.worker.min.mjs
 |   |-- pdf.min.js
 |   `-- pdf.worker.min.js
 |-- package.json
@@ -63,13 +76,13 @@ reader-webapp/
 |   |-- constants.mjs         # Static configuration and presets
 |   |-- context.mjs           # Shared transient application state
 |   |-- dom.mjs               # DOM element collection
-|   |-- parser.mjs             # Markdown and file extraction
-|   |-- reader.mjs             # Rendering and reader controls
+|   |-- parser.mjs             # Markdown, PDF, and DOCX extraction
+|   |-- reader.mjs             # Workload-aware rendering and edit mode
 |   |-- settings.mjs           # Themes, presets, and typography
-|   |-- storage.mjs            # Legacy storage cleanup only
-|   |-- tts.mjs                # Speech synthesis and highlighting
+|   |-- storage.mjs            # Transient storage guards
+|   |-- tts.mjs                # Speech synthesis and boundary engine
 |   |-- ui.mjs                 # Status, dialogs, and UI helpers
-|   `-- utils.mjs              # Shared guards and numeric helpers
+|   `-- utils.mjs              # Capability detection and numeric helpers
 |-- sw.js
 |-- manifest.webmanifest
 |-- README.md
@@ -135,7 +148,7 @@ Run the PWA app-shell validation:
 npm run test:pwa
 ```
 
-### Unit and Integration tests
+### Unit, Regression, and Empirical tests
 
 Run the native test suite covering chunking, word tokenization, speech state machine, mobile lifecycle, and PDF extraction:
 
@@ -143,7 +156,23 @@ Run the native test suite covering chunking, word tokenization, speech state mac
 npm run test:unit
 ```
 
-This runs `tests/test_reader.js` and `tests/test_tts_controller.js`, validating the core engine and production speech controller headless in Node.js.
+This runs `tests/test_reader.js`, `tests/test_tts_controller.js`, and `tests/test_regressions.js`, validating the core engine, speech state controller, and bug regressions headless in Node.js.
+
+Run the regression suite specifically:
+
+```bash
+npm run test:regressions
+```
+
+This validates CommonMark syntax compliance (nested emphasis, spaced asterisks, nested lists, blockquotes, ordered lists), smart headings false positives, safe link/image rendering, edit mode raw text preservation, async race conditions, throttled word scrolling, and capability-based mobile detection.
+
+Run the empirical stress test suite:
+
+```bash
+npm run test:empirical
+```
+
+This tests large text rendering, chunking throughput, memory behavior, and TTS tokenization stress.
 
 ### Full Playwright and Chromium smoke test
 
