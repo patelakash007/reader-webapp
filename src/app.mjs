@@ -7,6 +7,7 @@ import { cleanupLegacyBrowserStorage } from './storage.mjs';
 import { createTTS } from './tts.mjs';
 import { createUI } from './ui.mjs';
 import { installReaderExperience } from './experience.mjs';
+import { installTypographyComposition } from './typography.mjs';
 import { clampNumber } from './utils.mjs';
 
 let initialized = false;
@@ -113,5 +114,6 @@ export function init(documentObject = document) {
   tts.initializeVoices();
   const api = { context, parser, reader, settings, tts, ui };
   installReaderExperience(context, api);
+  installTypographyComposition(api);
   return api;
 }
