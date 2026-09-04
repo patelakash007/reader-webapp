@@ -565,6 +565,78 @@ const path = require('node:path');
   assert.strictEqual(exeEvent.target.value, '', 'Input target value should be reset for unsupported files');
   console.log('✓ parser.handleFile successfully loaded .txt and rejected unsupported .exe format.');
 
+  console.log('\n--- 24. TTS: Click-to-speak safeguards (unsupported, selection, links) ---');
+  let clickHandler = null;
+  const mockReaderContent = {
+    addEventListener(evt, fn) {
+      if (evt === 'click') clickHandler = fn;
+    },
+    removeEventListener() {},
+    contains() { return true; },
+    querySelectorAll() { return []; }
+  };
+  const clickContext = createAppContext({
+    readerContent: mockReaderContent,
+    voiceRateInput: { value: '1.0' }
+  });
+  let tokenizedCount = 0;
+  let startedSpeechAt = null;
+  const mockTTSController = {
+    getSession: () => clickContext.runtime.tts,
+    tokenize() {
+      tokenizedCount += 1;
+      clickContext.runtime.tts.wordMeta = [{ index: 0, text: 'hello', start: 0, end: 5 }];
+    },
+    startSpeech(idx) {
+      startedSpeechAt = idx;
+    },
+    stopTTS() {}
+  };
+  const readerInstance = createReader(clickContext, {
+    ui: mockUI,
+    parser: mockParser,
+    tts: mockTTSController,
+    getSettings: mockSettings
+  });
+  readerInstance.bindEvents();
+  assert(typeof clickHandler === 'function', 'Click handler should be attached');
+
+  // Case 1: TTS unsupported -> do not tokenize
+  clickContext.runtime.tts.supported = false;
+  clickHandler({ target: { closest: () => null } });
+  assert.strictEqual(tokenizedCount, 0, 'Should not tokenize when TTS is unsupported');
+
+  // Case 2: TTS supported, but user has an active text selection -> do not tokenize
+  clickContext.runtime.tts.supported = true;
+  global.window = {
+    getSelection: () => ({ isCollapsed: false, toString: () => 'selected text' })
+  };
+  clickHandler({ target: { closest: () => null } });
+  assert.strictEqual(tokenizedCount, 0, 'Should not tokenize when text is selected');
+
+  // Case 3: Target is a link -> do not tokenize
+  global.window.getSelection = () => ({ isCollapsed: true, toString: () => '' });
+  clickHandler({ target: { closest: sel => (sel.includes('a') ? {} : null) } });
+  assert.strictEqual(tokenizedCount, 0, 'Should not tokenize when clicking a link');
+
+  // Case 4: Valid click on text -> tokenizes and starts speech
+  const wordSpan = {
+    closest: sel => (sel === '.tts-word' ? wordSpan : null),
+    hasAttribute: attr => attr === 'data-word-idx',
+    getAttribute: attr => (attr === 'data-word-idx' ? '0' : null)
+  };
+  global.document = {
+    elementFromPoint: () => wordSpan
+  };
+  clickHandler({
+    target: { closest: () => null },
+    clientX: 100,
+    clientY: 200
+  });
+  assert.strictEqual(tokenizedCount, 1, 'Should tokenize on valid word click');
+  assert.strictEqual(startedSpeechAt, 0, 'Should start speech at word index 0 on first click');
+  console.log('✓ Reader click handler safeguards against unsupported TTS, active selection, links, and speaks on first click.');
+
   console.log('\n====================================================');
   console.log('ALL REGRESSION TESTS PASSED SUCCESSFULLY');
   console.log('====================================================\n');

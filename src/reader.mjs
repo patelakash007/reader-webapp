@@ -715,16 +715,32 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
       }, { passive: true });
       els.readerContent.addEventListener('click', event => {
         if (state.isEditing) return;
-        const target = getElementTarget(event.target);
-        if (!target) return;
-        // Lazy tokenization: tokenize if not tokenized yet
-        if (!tts.getSession().wordMeta.length) {
-          tts.tokenize();
+        const session = tts && typeof tts.getSession === 'function' ? tts.getSession() : null;
+        if (!session || !session.supported) return;
+
+        if (typeof window !== 'undefined' && window.getSelection) {
+          const selection = window.getSelection();
+          if (selection && (!selection.isCollapsed || (selection.toString && selection.toString().length > 0))) {
+            return;
+          }
         }
-        const wordElement = target.closest('.tts-word');
+
+        const target = getElementTarget(event.target);
+        if (!target || target.closest('a, button')) return;
+
+        let currentTarget = target;
+        // Lazy tokenization: tokenize if not tokenized yet
+        if (!session.wordMeta.length) {
+          tts.tokenize();
+          if (typeof document !== 'undefined' && typeof document.elementFromPoint === 'function' && typeof event.clientX === 'number' && typeof event.clientY === 'number') {
+            const el = document.elementFromPoint(event.clientX, event.clientY);
+            if (el) currentTarget = el;
+          }
+        }
+
+        const wordElement = currentTarget.closest('.tts-word');
         if (!wordElement || !wordElement.hasAttribute('data-word-idx')) return;
         const index = parseInt(wordElement.getAttribute('data-word-idx'), 10);
-        const session = tts.getSession();
         if (!Number.isNaN(index) && index >= 0 && index < session.wordMeta.length) tts.startSpeech(index);
       });
     }
