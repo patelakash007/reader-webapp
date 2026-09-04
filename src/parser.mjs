@@ -304,7 +304,9 @@ export function createParser(context, { ui, onTextLoaded }) {
             }
             return pdfLib;
           }
-        } catch (err) {}
+        } catch (err) {
+          console.warn('PDF.js ESM build failed to load, falling back to legacy bundle.', err);
+        }
       }
 
       if (name === 'mammoth' && typeof window === 'undefined') {
