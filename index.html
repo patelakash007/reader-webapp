@@ -3,10 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Reader Webapp - Safe &amp; Local eReader</title>
-<meta name="description" content="A state-of-the-art, fully client-side premium document reader. Processes PDFs, DOCX, Markdown, and TXT files entirely inside the browser with built-in TTS and custom typography presets.">
-<meta name="theme-color" content="#9a3524">
-<meta name="application-name" content="Reader Webapp">
+<meta name="color-scheme" content="light dark">
+<title>Reader — A calmer way to read</title>
+<meta name="description" content="A beautiful local-first reader for TXT, Markdown, PDF, and DOCX with private browser-native text-to-speech.">
+<meta name="theme-color" content="#faf8f5">
+<meta name="application-name" content="Reader">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Reader">
@@ -15,8 +16,9 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E&#128214;%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="experience.css">
 </head>
 <body>
 <div id="app">
@@ -25,39 +27,36 @@
   <div class="sheet-backdrop" id="sheetBackdrop"></div>
   
   <div class="editing-banner" id="editingBanner">
-    <span>You are in editing mode. Changes stay only in this open page session.</span>
+    <span>You are editing the document text. Changes remain local to this reading session.</span>
     <div class="editing-banner-actions">
       <button id="cancelEditBannerBtn" class="btn-banner-cancel" type="button">Cancel</button>
       <button id="saveEditBannerBtn" type="button">Save &amp; Exit</button>
     </div>
   </div>
 
-  <button class="mobile-fab" id="mobileFab" type="button" aria-label="Open Reading Settings" aria-controls="toolbar" aria-expanded="false"><span aria-hidden="true">&#x1F39B;&#xFE0F;</span></button>
+  <button class="mobile-fab" id="mobileFab" type="button" aria-label="Show Reading Controls" aria-controls="toolbar" aria-expanded="false"><span class="control-toggle-icon" aria-hidden="true">&#9881;</span><span class="control-toggle-label">Controls</span></button>
 
   <main id="inputView">
     <h1 class="brand">Reader</h1>
-    <div class="subtitle">Paste your text or drop a file anywhere here</div>
-    <textarea class="paste-area" id="pasteArea" aria-label="Text to read" placeholder="Paste text here..." autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+    <div class="subtitle">A quiet place for your words.</div>
+    <textarea class="paste-area" id="pasteArea" aria-label="Text to read" placeholder="Paste an article, notes, chapter, or anything you want to read…" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
     <div class="controls-row">
-      <button class="btn btn-primary" id="readBtn" type="button">Read Text</button>
+      <button class="btn btn-primary" id="readBtn" type="button">Start reading</button>
       <label class="file-input-wrap btn btn-secondary" for="fileInput">
-        <span>Upload File</span>
+        <span>Open a file</span>
         <input type="file" id="fileInput" accept=".txt,.md,.markdown,.pdf,.docx" autocomplete="off">
       </label>
       <button class="btn btn-secondary" id="clearBtn" type="button" style="display:none;">Clear</button>
     </div>
     <div class="status-message" id="statusMessage" role="status" aria-live="polite"></div>
-    
-    <!-- Polished Local Processing Notice -->
     <div class="privacy-banner">
-      <span aria-hidden="true">&#x1F512;</span> <strong>Local processing:</strong> Document content is processed in your browser. PDF.js and Mammoth parser libraries are bundled locally in this repo. Documents and preferences are not saved by the app.
+      <span aria-hidden="true">&#128274;</span> <strong>Private by design:</strong> text extraction, rendering, speech, preferences, and the recent local session stay in your browser. No account or upload is required.
     </div>
-    
-    <div class="note-text">Note: Multi-column PDFs and complex DOCX layouts may occasionally extract text out of order due to browser limitations.</div>
+    <div class="note-text">TXT, Markdown, PDF, and DOCX are supported. Complex multi-column documents may extract in reading order rather than preserve their original layout.</div>
   </main>
 
   <section id="readerView" aria-label="Reader view">
-    <button class="back-btn" id="backBtn" type="button" aria-label="Go Back"><span aria-hidden="true">&#8592;</span></button>
+    <button class="back-btn" id="backBtn" type="button" aria-label="Go back"><span aria-hidden="true">&#8592;</span></button>
 
     <div id="toolbar">
       <button class="bottom-sheet-handle" id="bottomSheetHandle" type="button" aria-label="Collapse Reading Settings"></button>
@@ -74,11 +73,11 @@
           <div class="settings-section-panel" id="themeSettingsPanel">
             <div class="settings-panel-inner">
               <div class="preset-carousel" id="presetCarousel">
-                <button class="preset-arrow" id="arrowLeft" type="button" aria-label="Previous Preset"><span aria-hidden="true">&#10094;</span></button>
+                <button class="preset-arrow" id="arrowLeft" type="button" aria-label="Previous preset"><span aria-hidden="true">&#10094;</span></button>
                 <div class="preset-window" id="presetWindow" tabindex="0" role="region" aria-label="Reading preset carousel">
                   <div class="preset-track snapping" id="presetTrack"></div>
                 </div>
-                <button class="preset-arrow" id="arrowRight" type="button" aria-label="Next Preset"><span aria-hidden="true">&#10095;</span></button>
+                <button class="preset-arrow" id="arrowRight" type="button" aria-label="Next preset"><span aria-hidden="true">&#10095;</span></button>
               </div>
               <div class="preset-dots" id="presetDots"></div>
               <div class="mode-toggle-row">
@@ -100,7 +99,7 @@
           <div class="settings-section-panel" id="textSettingsPanel" hidden>
             <div class="settings-panel-inner">
               <div class="size-control-group">
-                <span class="settings-label">Text Size</span>
+                <span class="settings-label">Text size</span>
                 <div class="size-choice-row" role="group" aria-label="Text size">
                   <button class="tb-btn" data-size="small" type="button" aria-label="Small text size" aria-pressed="false">S</button>
                   <button class="tb-btn active" data-size="medium" type="button" aria-label="Medium text size" aria-pressed="true">M</button>
@@ -110,11 +109,11 @@
               </div>
               <div class="settings-row">
                 <div class="control-item">
-                  <label for="lineHeightInput">Line Height</label>
+                  <label for="lineHeightInput">Line height</label>
                   <input type="range" id="lineHeightInput" min="1.4" max="2.6" step="0.1" value="1.85">
                 </div>
                 <div class="control-item">
-                  <label for="letterSpacingInput">Letter Spacing</label>
+                  <label for="letterSpacingInput">Letter spacing</label>
                   <input type="range" id="letterSpacingInput" min="-0.03" max="0.15" step="0.01" value="-0.015">
                 </div>
                 <div class="control-item">
@@ -129,8 +128,8 @@
         <section class="settings-section" data-settings-section="tools">
           <button class="settings-section-toggle" type="button" aria-expanded="false" aria-controls="toolsSettingsPanel">
             <span>
-              <span class="settings-section-title">Reading Tools</span>
-              <span class="settings-section-summary">Focus, ruler, TOC, edit</span>
+              <span class="settings-section-title">Reading tools</span>
+              <span class="settings-section-summary">Focus, ruler, contents, edit</span>
             </span>
             <span class="settings-section-chevron" aria-hidden="true"></span>
           </button>
@@ -151,8 +150,8 @@
         <section class="settings-section" data-settings-section="listen">
           <button class="settings-section-toggle" type="button" aria-expanded="false" aria-controls="listenSettingsPanel">
             <span>
-              <span class="settings-section-title">Listen &amp; Auto-scroll</span>
-              <span class="settings-section-summary">Speech and motion speed</span>
+              <span class="settings-section-title">Listen</span>
+              <span class="settings-section-summary">Voice, speed, auto-scroll</span>
             </span>
             <span class="settings-section-chevron" aria-hidden="true"></span>
           </button>
@@ -170,14 +169,14 @@
                 </div>
                 <div class="control-item">
                   <div class="control-label-row">
-                    <label for="voiceRateInput">Voice Speed</label>
+                    <label for="voiceRateInput">Voice speed</label>
                     <span class="value-display" id="voiceRateVal">1.0x</span>
                   </div>
                   <input type="range" id="voiceRateInput" min="0.5" max="2.5" step="0.1" value="1.0">
                 </div>
                 <div class="control-item">
                   <div class="control-label-row">
-                    <label for="scrollSpeedInput">Scroll Speed</label>
+                    <label for="scrollSpeedInput">Scroll speed</label>
                     <span class="value-display" id="scrollSpeedVal">1.0x</span>
                   </div>
                   <input type="range" id="scrollSpeedInput" min="0.01" max="0.2" step="0.01" value="0.04">
@@ -207,20 +206,18 @@
       </div>
     </div>
 
-    <!-- Semantic article element for reader focus -->
     <article class="reader-content fs-medium" id="readerContent"></article>
     <textarea class="reader-editor fs-medium" id="readerEditor" aria-label="Edit raw document text" spellcheck="false" hidden></textarea>
     <div class="wordcount" id="wordCount"></div>
     <div class="status-message reader-status-message" id="readerStatusMessage" role="status" aria-live="polite"></div>
     <button id="focusRestore" type="button" title="Show UI" aria-label="Show UI"><span aria-hidden="true">&#8853;</span></button>
 
-    <!-- Floating Audio Player Bar -->
     <div class="audio-player-bar" id="audioPlayerBar" role="region" aria-label="Audio player controls">
       <button class="audio-bar-btn" id="audioPlayPauseBtn" type="button" title="Play or Pause narration" aria-label="Play or Pause narration"><span aria-hidden="true">&#x25B6;</span></button>
       <button class="audio-bar-btn" id="audioStopBtn" type="button" title="Stop narration" aria-label="Stop narration" disabled><span aria-hidden="true">&#x23F9;</span></button>
       <div class="audio-bar-info">
         <span class="audio-bar-title" id="audioStatusText">Speech Ready</span>
-        <span class="audio-bar-hint">Click word to speak</span>
+        <span class="audio-bar-hint">Tap a word to start there</span>
       </div>
       <div class="audio-bar-actions">
         <button class="audio-bar-chip" id="audioSpeedBtn" type="button" title="Narration speed">1.0x</button>
@@ -229,13 +226,13 @@
   </section>
 
   <div id="gestureHint">
-    <div class="gesture-hint-text" id="gestureHintText">Swipe left / right</div>
-    <div class="gesture-hint-sub">to change reading preset</div>
+    <div class="gesture-hint-text" id="gestureHintText">Preset changed</div>
+    <div class="gesture-hint-sub">Swipe left / right to browse reading environments</div>
   </div>
 
   <div id="loader" role="status" aria-live="assertive" aria-atomic="true">
     <div class="spinner"></div>
-    <div class="loader-text">Loading text&#8230;</div>
+    <div class="loader-text">Preparing reader…</div>
   </div>
   
   <dialog id="tocDialog" class="modal" aria-labelledby="tocTitle">
