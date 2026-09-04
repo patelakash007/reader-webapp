@@ -692,6 +692,30 @@ const path = require('node:path');
   assert.strictEqual(h2Count, 2, `Expected 2 headings when separated by blank lines, got ${h2Count}: ${separateHtml}`);
   console.log('✓ Multi-line ALL-CAPS paragraph renders in <p> without collapsed raw newline heading.');
 
+  console.log('\n--- 27. DOM Cleanup: goBack clears reader DOM and wordCount text (F-14) ---');
+  const makeClassList2 = () => ({ add() {}, remove() {}, contains() { return false; } });
+  const backTestContent = { textContent: 'Previously rendered document DOM' };
+  const backTestWordCount = { textContent: '1,234 words', classList: makeClassList2() };
+  const backContext = createAppContext({
+    readerContent: backTestContent,
+    wordCount: backTestWordCount,
+    readerView: { classList: makeClassList2() },
+    inputView: { classList: makeClassList2() },
+    backBtn: { classList: makeClassList2() },
+    toolbar: { classList: makeClassList2() },
+    focusRestore: { classList: makeClassList2() }
+  });
+  const backReader = createReader(backContext, {
+    ui: mockUI,
+    parser,
+    tts: mockTTS,
+    getSettings: mockSettings
+  });
+  backReader.goBack();
+  assert.strictEqual(backTestContent.textContent, '', 'readerContent should be emptied when pressing Back');
+  assert.strictEqual(backTestWordCount.textContent, '', 'wordCount text should be emptied when pressing Back');
+  console.log('✓ goBack properly frees memory by clearing readerContent and wordCount.');
+
   console.log('\n====================================================');
   console.log('ALL REGRESSION TESTS PASSED SUCCESSFULLY');
   console.log('====================================================\n');

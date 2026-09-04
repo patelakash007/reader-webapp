@@ -591,14 +591,13 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
 
   function goBack() {
     cancelPendingFileRead(context);
-    cancelPendingRender(context, { clearContent: false });
+    cancelPendingRender(context, { clearContent: true });
+    if (els.wordCount) els.wordCount.textContent = '';
     if (state.isEditing) {
       cancelEditMode();
     }
     if (tts && typeof tts.invalidateTokenization === 'function') {
       tts.invalidateTokenization();
-    } else if (tts.getSession().isSpeaking) {
-      tts.stopTTS();
     }
     if (runtime.autoScroll.active) toggleAutoScroll();
     if (runtime.reader.isRulerActive) setRulerActive(false, { announce: false });
