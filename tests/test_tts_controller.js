@@ -111,6 +111,21 @@ function classList() {
   desktop.controller.stopTTS();
   assert.strictEqual(desktop.session.state, 'idle');
 
+  // Desktop long pause test (F-09)
+  const longPauseDesktop = createFixture(false);
+  longPauseDesktop.controller.startSpeech(0);
+  longPauseDesktop.controller.pauseSpeech();
+  assert.strictEqual(longPauseDesktop.session.state, 'paused');
+  // Simulate advancing clock by 20s
+  longPauseDesktop.session.pausedAt = Date.now() - 20000;
+  longPauseDesktop.controller.resumeSpeech();
+  assert.strictEqual(longPauseDesktop.session.state, 'playing');
+  // Should call synth.cancel and synth.speak (restart path), NOT synth.resume
+  const recentActions = longPauseDesktop.synth.history.slice(-2).map(h => h.action);
+  assert(recentActions.includes('cancel') && recentActions.includes('speak'), `Expected cancel and speak on long pause restart, got: ${recentActions.join(', ')}`);
+  assert(!recentActions.includes('resume'), 'Long pause resume should not invoke synth.resume');
+  longPauseDesktop.controller.stopTTS();
+
   const mobile = createFixture(true);
   mobile.controller.startSpeech(2);
   assert.strictEqual(mobile.session.state, 'playing');

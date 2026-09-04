@@ -360,6 +360,7 @@ export function createTTS(context, { ui }) {
     const playing = nextState === STATE_PLAYING;
     const paused = nextState === STATE_PAUSED;
     session.isSpeaking = playing || paused;
+    session.pausedAt = paused ? (session.pausedAt || Date.now()) : 0;
 
     if (els.ttsBtn) {
       els.ttsBtn.classList.toggle('active', playing || paused);
@@ -501,8 +502,10 @@ export function createTTS(context, { ui }) {
 
   function resumeSpeech() {
     if (session.state !== STATE_PAUSED) return;
-    if (session.isMobile || session.speechCanceledWhileHidden) restartFromWord(session.currentWordIndex >= 0 ? session.currentWordIndex : 0);
-    else {
+    const isLongPause = Boolean(session.pausedAt && (Date.now() - session.pausedAt > 10000));
+    if (session.isMobile || session.speechCanceledWhileHidden || session.visibilityInterrupted || isLongPause) {
+      restartFromWord(session.currentWordIndex >= 0 ? session.currentWordIndex : 0);
+    } else {
       try { session.synth.resume(); } catch (err) {}
       setState(STATE_PLAYING);
       startKeepAliveTimer();
@@ -586,7 +589,7 @@ export function createTTS(context, { ui }) {
   }
 
   function handleVisibilityChange() {
-    if (document.hidden) {
+    if (typeof document !== 'undefined' && document.hidden) {
       if (session.state === STATE_PLAYING) {
         session.visibilityInterrupted = true;
         stopKeepAliveTimer();
@@ -598,7 +601,7 @@ export function createTTS(context, { ui }) {
         }
         setState(STATE_PAUSED);
       }
-    } else if (session.visibilityInterrupted) session.visibilityInterrupted = false;
+    }
   }
 
   function bindEvents() {

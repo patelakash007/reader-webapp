@@ -65,6 +65,7 @@ export function createAppContext(els) {
         speechGeneration: 0,
         visibilityInterrupted: false,
         speechCanceledWhileHidden: false,
+        pausedAt: 0,
         isSpeaking: false,
         supported: typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window,
         synth: typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window
