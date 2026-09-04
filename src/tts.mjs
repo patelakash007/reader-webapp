@@ -385,6 +385,7 @@ export function createTTS(context, { ui }) {
     stopEstimateTimer();
     if (!session.wordMeta.length) return;
     const rate = clampNumber(els.voiceRateInput ? els.voiceRateInput.value : '1.0', 1.0, 0.5, 2.5);
+    const startingChunkIndex = session.chunkIndex;
     const firstWord = findFirstWordEndingAfter(chunk.start);
     const firstWordIndex = firstWord === -1 ? session.wordMeta.length - 1 : firstWord;
     const lastWordIdx = findWordIndexByChar(chunk.end - 1);

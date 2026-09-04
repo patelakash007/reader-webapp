@@ -59,7 +59,49 @@ for (const filePath of allFiles) {
     }
   }
 
-  // 3. ESLint execution if available
+  // 3. Cross-module export usage verification (detects unimported sibling exports)
+  const allExports = new Map();
+  for (const filePath of srcFiles) {
+    const content = fs.readFileSync(filePath, 'utf8');
+    const exportRegex = /export\s+(?:function|const|let|var|class)\s+([a-zA-Z0-9_$]+)/g;
+    let m;
+    while ((m = exportRegex.exec(content)) !== null) {
+      allExports.set(m[1], filePath);
+    }
+  }
+
+  for (const filePath of srcFiles) {
+    const content = fs.readFileSync(filePath, 'utf8');
+    const importedNames = new Set();
+    const importRegex = /import\s+\{([^}]+)\}\s+from/g;
+    let im;
+    while ((im = importRegex.exec(content)) !== null) {
+      im[1].split(',').forEach(s => {
+        const parts = s.trim().split(/\s+as\s+/);
+        if (parts[1]) importedNames.add(parts[1].trim());
+        else if (parts[0]) importedNames.add(parts[0].trim());
+      });
+    }
+
+    const stripped = content
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*/g, '')
+      .replace(/"(?:\\.|[^"\\])*"/g, '')
+      .replace(/'(?:\\.|[^'\\])*'/g, '')
+      .replace(/`[\s\S]*?`/g, '');
+
+    for (const [exportName, sourceFile] of allExports.entries()) {
+      if (sourceFile === filePath) continue;
+      if (importedNames.has(exportName)) continue;
+      const usageRegex = new RegExp(`(?<![.\\w$])${exportName}(?![\\w$])`, 'g');
+      if (usageRegex.test(stripped)) {
+        console.error(`Missing import in ${path.basename(filePath)}: references '${exportName}' exported by ${path.basename(sourceFile)} without importing it.`);
+        process.exit(1);
+      }
+    }
+  }
+
+  // 4. ESLint execution if available
   const eslintBin = path.join(rootDir, 'node_modules', '.bin', 'eslint');
   if (fs.existsSync(eslintBin)) {
     const eslintResult = spawnSync(eslintBin, ['src/', 'scripts/', 'tests/'], { encoding: 'utf8', stdio: 'inherit' });

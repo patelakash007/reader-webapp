@@ -266,6 +266,40 @@ function classList() {
   speedController.cycleVoiceSpeed();
   assert.strictEqual(speedRateInput.value, 0.8, `Expected 2.4 to wrap around to 0.8, got ${speedRateInput.value}`);
 
+  // Test fallback estimateTimer progression and startingChunkIndex safety
+  const estimateSynth = new FakeSynth();
+  let estimateUtterance = null;
+  estimateSynth.speak = (u) => {
+    estimateUtterance = u;
+  };
+  const estimateContext = createAppContext({
+    voiceRateInput: { value: '1.0' },
+    readerContent: { querySelectorAll: () => [], contains: () => true }
+  });
+  estimateContext.runtime.tts.supported = true;
+  estimateContext.runtime.tts.synth = estimateSynth;
+  estimateContext.runtime.tts.wordMeta = [
+    { index: 0, text: 'First', start: 0, end: 5 },
+    { index: 1, text: 'Second', start: 6, end: 12 },
+    { index: 2, text: 'Third', start: 13, end: 18 }
+  ];
+  estimateContext.runtime.tts.wordSpans = [
+    { classList: classList(), scrollIntoView() {} },
+    { classList: classList(), scrollIntoView() {} },
+    { classList: classList(), scrollIntoView() {} }
+  ];
+  estimateContext.runtime.tts.fullSpokenText = 'First Second Third';
+  const estimateController = createTTS(estimateContext, { ui: { showStatus() {}, announceLive() {} } });
+  estimateController.startSpeech(0);
+  assert(estimateUtterance, 'Utterance must be created for speech');
+  // Trigger onstart without boundary events to activate estimateTimer
+  estimateUtterance.onstart();
+  // Wait for estimate timer tick (120ms)
+  await new Promise(resolve => setTimeout(resolve, 120));
+  assert.strictEqual(estimateContext.runtime.tts.state, 'playing');
+  assert(estimateContext.runtime.tts.currentWordIndex >= 0, 'Word highlight should advance via estimate timer');
+  estimateController.stopTTS();
+
   console.log('Production TTS controller state-machine tests passed.');
 })().catch(error => {
   console.error(error);

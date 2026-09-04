@@ -935,6 +935,78 @@ const path = require('node:path');
   assert.strictEqual(rulerEl.style.transform, 'translate3d(0, -14px, 0)', 'Ruler transform should be calculated properly for touch with pageY === 0');
   console.log('✓ Reading ruler correctly positions at pageY === 0 without ignoring falsy zero coordinate.');
 
+  console.log('\n--- 33. State & UI: activeFileName declared and populated from handleFile for downloads (F-10 / F-15) ---');
+  const initialCtx = createAppContext();
+  assert('activeFileName' in initialCtx.state, 'state.activeFileName must be declared in initial app state');
+  assert.strictEqual(initialCtx.state.activeFileName, '', 'state.activeFileName defaults to empty string');
+
+  const flowCtx = createAppContext();
+  const flowUI = { ...mockUI };
+  let flowReader;
+  const flowParser = parser.createParser(flowCtx, {
+    ui: flowUI,
+    onTextLoaded: (text, fileName) => flowReader.loadTextFlow(text, 'file', fileName)
+  });
+  flowReader = createReader(flowCtx, {
+    ui: flowUI,
+    parser,
+    tts: mockTTS,
+    getSettings: mockSettings
+  });
+
+  const uploadEvent = {
+    target: {
+      files: [{ name: 'financial-quarterly-report.txt', size: 25, _content: 'Sample financial statement.' }],
+      value: 'financial-quarterly-report.txt'
+    }
+  };
+  await flowParser.handleFile(uploadEvent);
+  assert.strictEqual(flowCtx.state.activeFileName, 'financial-quarterly-report.txt', 'activeFileName must be set from uploaded file name');
+  const flowDownloadUI = uiModule.createUI(flowCtx);
+  const derivedName = flowDownloadUI.getDownloadFilename();
+  assert(derivedName.startsWith('financial-quarterly-report_'), `Expected filename derived from uploaded file name, got: ${derivedName}`);
+  console.log('✓ activeFileName declared in state and derived for download from uploaded file name.');
+
+  console.log('\n--- 34. PWA: sw.js precache excludes heavy PDF.js bundles (F-19) ---');
+  const swCode = fs.readFileSync(path.join(__dirname, '../sw.js'), 'utf8');
+  assert(!swCode.includes("'./vendor/pdf.min.mjs'"), 'sw.js APP_SHELL must not precache vendor/pdf.min.mjs');
+  assert(!swCode.includes("'./vendor/pdf.worker.min.mjs'"), 'sw.js APP_SHELL must not precache vendor/pdf.worker.min.mjs');
+  assert(!swCode.includes("'./vendor/pdf.min.js'"), 'sw.js APP_SHELL must not precache vendor/pdf.min.js');
+  assert(!swCode.includes("'./vendor/pdf.worker.min.js'"), 'sw.js APP_SHELL must not precache vendor/pdf.worker.min.js');
+  assert(swCode.includes("cacheFirst"), 'sw.js must provide cacheFirst runtime caching for vendor assets');
+  console.log('✓ sw.js APP_SHELL precache excludes heavy PDF.js bundles.');
+
+  console.log('\n--- 35. TTS: Fallback estimate timer execution with startingChunkIndex (F-06) ---');
+  const timerContext = createAppContext({
+    voiceRateInput: { value: '1.0' },
+    readerContent: { querySelectorAll: () => [], contains: () => true }
+  });
+  timerContext.runtime.tts.supported = true;
+  let uttered = null;
+  timerContext.runtime.tts.synth = {
+    speak(u) { uttered = u; },
+    cancel() {},
+    pause() {},
+    resume() {}
+  };
+  timerContext.runtime.tts.wordMeta = [
+    { start: 0, end: 5, index: 0 },
+    { start: 6, end: 11, index: 1 }
+  ];
+  timerContext.runtime.tts.wordSpans = [
+    { classList: makeClassList2(), scrollIntoView() {} },
+    { classList: makeClassList2(), scrollIntoView() {} }
+  ];
+  timerContext.runtime.tts.fullSpokenText = 'hello world';
+  const estimateTTS = tts.createTTS(timerContext, { ui: mockUI });
+  estimateTTS.startSpeech(0);
+  assert(uttered, 'Utterance must be dispatched');
+  uttered.onstart();
+  await new Promise(r => setTimeout(r, 120));
+  assert.strictEqual(timerContext.runtime.tts.state, 'playing');
+  estimateTTS.stopTTS();
+  console.log('✓ TTS startEstimateTimer runs without ReferenceError on startingChunkIndex.');
+
   console.log('\n====================================================');
   console.log('ALL REGRESSION TESTS PASSED SUCCESSFULLY');
   console.log('====================================================\n');

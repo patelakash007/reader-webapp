@@ -35,7 +35,7 @@ export function init(documentObject = document) {
   let reader;
   const parser = createParser(context, {
     ui,
-    onTextLoaded: text => reader.loadTextFlow(text)
+    onTextLoaded: (text, fileName) => reader.loadTextFlow(text, 'file', fileName)
   });
   const settings = createSettings(context, {
     ui,

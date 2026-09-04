@@ -500,7 +500,7 @@ export function createParser(context, { ui, onTextLoaded }) {
       const text = await readSelectedFile(file, extension, readToken);
       assertActiveFileRead(context, readToken);
       ui.hideLoader();
-      onTextLoaded(text);
+      onTextLoaded(text, file.name);
     } catch (err) {
       if (isStaleReadError(err) || !isActiveFileRead(context, readToken)) return;
       ui.hideLoader();

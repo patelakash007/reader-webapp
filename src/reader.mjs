@@ -599,6 +599,7 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     cancelPendingFileRead(context);
     cancelPendingRender(context, { clearContent: true });
     if (els.wordCount) els.wordCount.textContent = '';
+    state.activeFileName = '';
     if (state.isEditing) {
       cancelEditMode();
     }
@@ -641,7 +642,7 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     if (els.progressBar) els.progressBar.style.width = '0%';
   }
 
-  function loadTextFlow(text, source = 'file') {
+  function loadTextFlow(text, source = 'file', fileName = '') {
     if (!text || !text.trim()) {
       ui.showStatus('Provide text input or upload a file first.', 'error');
       return;
@@ -655,6 +656,7 @@ export function createReader(context, { ui, parser, tts, getSettings }) {
     }
     ui.clearStatus();
     state.textSource = source;
+    state.activeFileName = source === 'file' ? (fileName || '') : '';
     state.currentText = safeText;
     renderTextAsync(state.currentText, enterReader);
   }

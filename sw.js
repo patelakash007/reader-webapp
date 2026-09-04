@@ -19,8 +19,6 @@ const APP_SHELL = [
   './src/utils.mjs',
   './manifest.webmanifest',
   './vendor/marked.esm.mjs',
-  './vendor/pdf.min.mjs',
-  './vendor/pdf.worker.min.mjs',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/maskable-192.png',

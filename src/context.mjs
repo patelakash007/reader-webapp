@@ -25,6 +25,7 @@ export function createAppContext(els) {
       isEditing: false,
       smartHeadings: true,
       textSource: 'paste',
+      activeFileName: '',
       wordCountTimer: null,
       lastCarouselDragDistance: 0
     },
