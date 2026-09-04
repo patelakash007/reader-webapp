@@ -1,4 +1,8 @@
 const SIZE_SCALE = { small: 0.86, medium: 1, large: 1.12, xl: 1.26 };
+const PRESET_GUTTERS = {
+  claude: 28, zen: 26, stark: 30, book: 42, classic: 38, kindle: 40, github: 24, amber: 30, newspaper: 44, lavender: 30,
+  night: 25, void: 22, carbon: 28, midnight: 36, obsidian: 28, dracula: 24, nord: 30, catppuccin: 27, forest: 29, ink: 40
+};
 
 function activeSize(els) {
   return ['small', 'medium', 'large', 'xl'].find(size => els.readerContent?.classList.contains(`fs-${size}`)) || 'medium';
@@ -24,9 +28,11 @@ function syncManualTypography(api) {
   const baseSize = profileNumber('--reading-size', 18.4);
   const lineHeightInput = Number(api.els.lineHeightInput?.value);
   const letterSpacingInput = Number(api.els.letterSpacingInput?.value);
+  const marginInput = Number(api.els.marginInput?.value);
   const fontWeight = profileNumber('--reading-weight', 460);
   const lineHeight = Number.isFinite(lineHeightInput) ? lineHeightInput : profileNumber('--reading-leading', 1.82);
   const letterSpacing = Number.isFinite(letterSpacingInput) ? letterSpacingInput : profileNumber('--reading-letter', -0.004);
+  const gutter = Number.isFinite(marginInput) ? Math.max(12, Math.min(80, marginInput)) : profileNumber('--reading-gutter', 28);
   const fontFamily = getComputedStyle(document.documentElement).getPropertyValue('--reading-font').trim() || 'var(--body-font, system-ui)';
 
   getElements(api).forEach(element => {
@@ -35,16 +41,24 @@ function syncManualTypography(api) {
     importantStyle(element, 'line-height', String(lineHeight));
     importantStyle(element, 'letter-spacing', `${letterSpacing}em`);
     importantStyle(element, 'font-family', fontFamily);
+    importantStyle(element, 'padding-left', `${gutter}px`);
+    importantStyle(element, 'padding-right', `${gutter}px`);
   });
 }
 
 function syncPresetControls(api) {
+  const preset = document.body?.dataset?.readingPreset || '';
+  const presetGutter = PRESET_GUTTERS[preset] || 28;
   const lead = profileNumber('--reading-leading', 1.82);
   const letter = profileNumber('--reading-letter', -0.004);
   const line = api.els.lineHeightInput;
   const spacing = api.els.letterSpacingInput;
+  const margin = api.els.marginInput;
   if (line && document.activeElement !== line) line.value = Math.max(1.4, Math.min(2.6, lead));
   if (spacing && document.activeElement !== spacing) spacing.value = Math.max(-0.03, Math.min(0.15, letter));
+  if (margin && document.activeElement !== margin) margin.value = presetGutter;
+  api.els.readerContent?.style.setProperty('--reading-gutter', `${presetGutter}px`);
+  api.els.readerEditor?.style.setProperty('--reading-gutter', `${presetGutter}px`);
   syncManualTypography(api);
 }
 
