@@ -211,17 +211,75 @@ export function createTTS(context, { ui }) {
     session.currentWordIndex = -1;
   }
 
+  function findWordIndexByChar(absIndex) {
+    const meta = session.wordMeta;
+    if (!meta.length || absIndex < meta[0].start) return -1;
+    let low = 0;
+    let high = meta.length - 1;
+    let best = -1;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      if (meta[mid].start <= absIndex) {
+        best = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+    return best;
+  }
+
+  function findFirstWordEndingAfter(charOffset) {
+    const meta = session.wordMeta;
+    if (!meta.length) return -1;
+    let low = 0;
+    let high = meta.length - 1;
+    let best = -1;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      if (meta[mid].end > charOffset) {
+        best = mid;
+        high = mid - 1;
+      } else {
+        low = mid + 1;
+      }
+    }
+    return best;
+  }
+
   function highlightAtIndex(absIndex) {
     if (!session.wordMeta.length) return;
-    let index = session.wordMeta.findIndex(word => absIndex >= word.start && absIndex < word.end);
-    if (index === -1) {
-      for (let i = session.wordMeta.length - 1; i >= 0; i -= 1) {
-        if (session.wordMeta[i].start <= absIndex) {
-          index = i;
-          break;
+
+    // Fast-path short-circuits: check current word and next word
+    const curr = session.currentWordIndex;
+    if (curr >= 0 && curr < session.wordMeta.length) {
+      const w = session.wordMeta[curr];
+      if (absIndex >= w.start && absIndex < w.end) return;
+      if (curr + 1 < session.wordMeta.length) {
+        const next = session.wordMeta[curr + 1];
+        if (absIndex >= next.start && absIndex < next.end) {
+          if (session.wordSpans[curr]) session.wordSpans[curr].classList.remove('active');
+          session.currentWordIndex = curr + 1;
+          const nextSpan = session.wordSpans[curr + 1];
+          if (nextSpan) {
+            nextSpan.classList.add('active');
+            const rect = typeof nextSpan.getBoundingClientRect === 'function' ? nextSpan.getBoundingClientRect() : null;
+            const viewportHeight = typeof window !== 'undefined' ? (window.innerHeight || document.documentElement?.clientHeight || 800) : 800;
+            const needsScroll = !rect || rect.top < 80 || rect.bottom > (viewportHeight - 100);
+            if (needsScroll) {
+              const rate = parseFloat(els.voiceRateInput ? els.voiceRateInput.value : '1.0') || 1.0;
+              const scrollBehavior = rate > 1.5 ? 'auto' : 'smooth';
+              try { nextSpan.scrollIntoView({ block: 'nearest', behavior: scrollBehavior }); } catch (err) {
+                if (typeof nextSpan.scrollIntoView === 'function') nextSpan.scrollIntoView();
+              }
+            }
+          }
+          return;
         }
       }
     }
+
+    const index = findWordIndexByChar(absIndex);
     if (index === -1 || index === session.currentWordIndex) return;
     if (session.currentWordIndex >= 0 && session.wordSpans[session.currentWordIndex]) {
       session.wordSpans[session.currentWordIndex].classList.remove('active');
@@ -311,10 +369,10 @@ export function createTTS(context, { ui }) {
     stopEstimateTimer();
     if (!session.wordMeta.length) return;
     const rate = clampNumber(els.voiceRateInput ? els.voiceRateInput.value : '1.0', 1.0, 0.5, 2.5);
-    const startingChunkIndex = session.chunkIndex;
-    const firstWord = session.wordMeta.findIndex(word => word.end > chunk.start);
+    const firstWord = findFirstWordEndingAfter(chunk.start);
     const firstWordIndex = firstWord === -1 ? session.wordMeta.length - 1 : firstWord;
-    const lastWord = session.wordMeta.reduce((last, word, index) => word.start < chunk.end ? index : last, firstWordIndex);
+    const lastWordIdx = findWordIndexByChar(chunk.end - 1);
+    const lastWord = lastWordIdx >= firstWordIndex ? lastWordIdx : firstWordIndex;
     let elapsed = 0;
     if (firstWordIndex >= 0 && firstWordIndex < session.wordMeta.length) highlightAtIndex(session.wordMeta[firstWordIndex].start);
 
@@ -648,6 +706,7 @@ export function createTTS(context, { ui }) {
     bindEvents,
     initializeVoices,
     cycleVoiceSpeed,
+    findWordIndexByChar,
     getSession: () => session,
     highlightAtIndex,
     invalidateTokenization,

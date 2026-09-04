@@ -257,6 +257,66 @@ const assert = require('node:assert');
   assert.strictEqual(constants.VALID_THEMES.size, 20);
   console.log(`✓ 5,000 production Markdown headings parsed in ${elapsed}ms.`);
 
+  console.log('\n--- 8. High-volume word highlight performance & binary search parity ---');
+  const wordCount = 150000;
+  const wordMeta = new Array(wordCount);
+  const wordSpans = new Array(wordCount);
+  let charOffset = 0;
+  for (let i = 0; i < wordCount; i++) {
+    const len = 5;
+    wordMeta[i] = {
+      index: i,
+      text: 'word' + i,
+      start: charOffset,
+      end: charOffset + len
+    };
+    wordSpans[i] = {
+      classList: { add() {}, remove() {}, contains() { return false; } },
+      scrollIntoView() {},
+      getBoundingClientRect: () => ({ top: 100, bottom: 120, height: 20 })
+    };
+    charOffset += len + 1;
+  }
+
+  const stressContext = createAppContext({
+    voiceRateInput: { value: '1.0' },
+    readerContent: { querySelectorAll: () => [] }
+  });
+  stressContext.runtime.tts.supported = true;
+  stressContext.runtime.tts.wordMeta = wordMeta;
+  stressContext.runtime.tts.wordSpans = wordSpans;
+  stressContext.runtime.tts.fullSpokenText = 'dummy text';
+
+  const ttsStress = tts.createTTS(stressContext, { ui: { showStatus() {}, announceLive() {} } });
+
+  // 1. Parity test between binary search and linear findIndex on random offsets
+  for (let trial = 0; trial < 200; trial++) {
+    const randomChar = Math.floor(Math.random() * charOffset);
+    const expected = wordMeta.findIndex(w => randomChar >= w.start && randomChar < w.end);
+    let expectedFinal = expected;
+    if (expectedFinal === -1) {
+      for (let i = wordMeta.length - 1; i >= 0; i--) {
+        if (wordMeta[i].start <= randomChar) {
+          expectedFinal = i;
+          break;
+        }
+      }
+    }
+    const actual = ttsStress.findWordIndexByChar(randomChar);
+    assert.strictEqual(actual, expectedFinal, `Mismatch at offset ${randomChar}: expected ${expectedFinal}, got ${actual}`);
+  }
+
+  // 2. Call highlightAtIndex 10,000 times at increasing offsets and assert total time < 100 ms
+  const highlightCount = 10000;
+  const step = Math.max(1, Math.floor(charOffset / highlightCount));
+  const hlStart = Date.now();
+  for (let i = 0; i < highlightCount; i++) {
+    ttsStress.highlightAtIndex(i * step);
+  }
+  const hlElapsed = Date.now() - hlStart;
+  assert(hlElapsed < 100, `highlightAtIndex 10k calls on 150k words took ${hlElapsed}ms (must be < 100ms)`);
+  console.log(`✓ 10,000 highlightAtIndex lookups over 150,000 words completed in ${hlElapsed}ms (<100ms threshold).`);
+
   console.log('\n====================================================');
   console.log('ALL FORENSIC EMPIRICAL STRESS TESTS PASSED');
   console.log('====================================================\n');
