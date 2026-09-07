@@ -1,6 +1,7 @@
 'use strict';
 
-const CACHE_NAME = 'reader-webapp-shell-v8';
+const CACHE_NAME = 'reader-webapp-shell-v9';
+const CACHE_PREFIX = 'reader-webapp-';
 const APP_SHELL = [
   './',
   './index.html',
@@ -93,11 +94,14 @@ async function navigationResponse(request, event) {
   const cache = await caches.open(CACHE_NAME);
 
   try {
-    const fetchPromise = fetch(request);
-    event.waitUntil(fetchPromise
-      .then(response => cacheCanonicalNavigation(cache, request, response))
-      .catch(() => undefined));
-    return await fetchPromise;
+    const response = await fetch(request);
+    if (response && response.ok) {
+      await cacheCanonicalNavigation(cache, request, response);
+      return response;
+    }
+
+    const cachedShell = await cache.match(INDEX_URL) || await cache.match(ROOT_URL);
+    return cachedShell || response || Response.error();
   } catch (err) {
     const cachedShell = await cache.match(INDEX_URL) || await cache.match(ROOT_URL);
     return cachedShell || Response.error();
@@ -111,34 +115,15 @@ async function staleWhileRevalidate(request, event) {
 
   event.waitUntil(fetchPromise
     .then(response => {
-      if (response && response.ok && isCanonicalAppShellRequest(request)) {
+      if (response && response.ok) {
         return safeCachePut(cache, request, response.clone());
       }
       return undefined;
     })
     .catch(() => undefined));
 
-  if (cached) {
-    event.waitUntil(fetchPromise.catch(() => undefined));
-    return cached;
-  }
-
-  return fetchPromise;
-}
-
-async function cacheFirst(request, event) {
-  const cache = await caches.open(CACHE_NAME);
-  const cached = await cache.match(request);
   if (cached) return cached;
-  try {
-    const response = await fetch(request);
-    if (response && response.ok) {
-      event.waitUntil(safeCachePut(cache, request, response.clone()));
-    }
-    return response;
-  } catch (err) {
-    return cached || Response.error();
-  }
+  return fetchPromise;
 }
 
 function isVendorRequest(request) {
@@ -160,7 +145,7 @@ self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
     await Promise.all(keys
-      .filter(key => key !== CACHE_NAME)
+      .filter(key => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
       .map(key => caches.delete(key)));
     await self.clients.claim();
   })());
@@ -178,7 +163,7 @@ self.addEventListener('fetch', event => {
   }
 
   if (isVendorRequest(request)) {
-    event.respondWith(cacheFirst(request, event));
+    event.respondWith(staleWhileRevalidate(request, event));
     return;
   }
 
