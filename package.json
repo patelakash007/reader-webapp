@@ -5,7 +5,7 @@
   "description": "Local-first browser reader app.",
   "scripts": {
     "test:syntax": "node scripts/check-syntax.js",
-    "test:pwa": "node scripts/validate-pwa.js",
+    "test:pwa": "node scripts/validate-pwa.js && node tests/test_pwa.js",
     "test:unit": "node tests/test_reader.js && node tests/test_tts_controller.js && node tests/test_regressions.js",
     "test:regressions": "node tests/test_regressions.js",
     "test:empirical": "node tests/test_empirical_stress.js",
