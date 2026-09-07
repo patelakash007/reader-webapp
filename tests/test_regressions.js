@@ -973,7 +973,7 @@ const path = require('node:path');
   assert(!swCode.includes("'./vendor/pdf.worker.min.mjs'"), 'sw.js APP_SHELL must not precache vendor/pdf.worker.min.mjs');
   assert(!swCode.includes("'./vendor/pdf.min.js'"), 'sw.js APP_SHELL must not precache vendor/pdf.min.js');
   assert(!swCode.includes("'./vendor/pdf.worker.min.js'"), 'sw.js APP_SHELL must not precache vendor/pdf.worker.min.js');
-  assert(swCode.includes("cacheFirst"), 'sw.js must provide cacheFirst runtime caching for vendor assets');
+  assert(swCode.includes("staleWhileRevalidate"), 'sw.js must provide stale-while-revalidate runtime caching for vendor assets');
   console.log('✓ sw.js APP_SHELL precache excludes heavy PDF.js bundles.');
 
   console.log('\n--- 35. TTS: Fallback estimate timer execution with startingChunkIndex (F-06) ---');
