@@ -144,7 +144,7 @@ function resetRuntime() {
 
 async function testInstallAndActivateVersionedCaches() {
   resetRuntime();
-  queueFetch(...Array.from({ length: 21 }, () => new FakeResponse('asset')));
+  queueFetch(...Array.from({ length: 31 }, () => new FakeResponse('asset')));
 
   const installEvent = makeEvent();
   eventHandlers.get('install')(installEvent);
