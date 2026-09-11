@@ -217,7 +217,10 @@ async function testCanonicalNavigationFallsBackOnServerError() {
 
 async function testNonCanonicalNavigationKeepsServerError() {
   resetRuntime();
-  cachesByName.set('reader-webapp-shell-v9', new FakeCache());
+  const cache = new FakeCache();
+  cachesByName.set('reader-webapp-shell-v9', cache);
+  await cache.put(new FakeRequest('https://reader.example.test/index.html'), new FakeResponse('cached-shell'));
+
   const serverError = new FakeResponse('not-found', { ok: false, status: 404 });
   queueFetch(serverError);
 
@@ -226,7 +229,20 @@ async function testNonCanonicalNavigationKeepsServerError() {
   eventHandlers.get('fetch')(event);
   const response = await event.responses[0];
 
-  assert.equal(response, serverError, 'non-canonical navigation should preserve server response');
+  assert.equal(response, serverError, 'non-canonical navigation should preserve server response even when the app shell is cached');
+
+  resetRuntime();
+  const offlineCache = new FakeCache();
+  cachesByName.set('reader-webapp-shell-v9', offlineCache);
+  await offlineCache.put(new FakeRequest('https://reader.example.test/index.html'), new FakeResponse('cached-shell'));
+  queueFetch(new Error('offline'));
+
+  const offlineEvent = makeEvent({ request });
+  eventHandlers.get('fetch')(offlineEvent);
+  const offlineResponse = await offlineEvent.responses[0];
+
+  assert.equal(offlineResponse.status, 0, 'offline non-canonical navigation should return a network error instead of the app shell');
+  assert.equal(offlineResponse.body, '', 'offline non-canonical navigation should not return cached app-shell content');
 }
 
 async function run() {
