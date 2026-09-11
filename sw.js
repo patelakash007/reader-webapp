@@ -102,6 +102,7 @@ async function navigationResponse(request, event) {
   }
 
   const cache = await caches.open(CACHE_NAME);
+  const canonicalNavigation = isCanonicalNavigation(request);
 
   try {
     const response = await fetch(request);
@@ -110,9 +111,13 @@ async function navigationResponse(request, event) {
       return response;
     }
 
+    if (!canonicalNavigation) return response || Response.error();
+
     const cachedShell = await cache.match(INDEX_URL) || await cache.match(ROOT_URL);
     return cachedShell || response || Response.error();
   } catch (err) {
+    if (!canonicalNavigation) return Response.error();
+
     const cachedShell = await cache.match(INDEX_URL) || await cache.match(ROOT_URL);
     return cachedShell || Response.error();
   }
