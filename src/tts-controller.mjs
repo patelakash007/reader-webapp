@@ -401,6 +401,9 @@ export function createTTS(context, { ui }) {
       try { session.synth.resume(); } catch (err) {}
       setState(STATE_PLAYING);
       startKeepAliveTimer();
+      if (!session.chunkHasBoundary && session.chunks[session.chunkIndex]) {
+        startEstimateTimer(session.chunks[session.chunkIndex], session.speechGeneration);
+      }
     }
     ui.announceLive('Text-to-speech resumed.');
   }

@@ -117,6 +117,48 @@ function classList() {
   desktop.controller.stopTTS();
   assert.strictEqual(desktop.session.state, 'idle');
 
+  // Desktop engines that do not dispatch boundary events need their fallback
+  // estimate timer restarted after a pause/resume cycle.
+  const originalSetInterval = global.setInterval;
+  const originalClearInterval = global.clearInterval;
+  const syntheticIntervals = new Map();
+  let nextSyntheticIntervalId = 0;
+  global.setInterval = (callback, delay) => {
+    const id = ++nextSyntheticIntervalId;
+    syntheticIntervals.set(id, { callback, delay });
+    return id;
+  };
+  global.clearInterval = id => syntheticIntervals.delete(id);
+  try {
+    const boundarylessDesktop = createFixture(false);
+    boundarylessDesktop.controller.startSpeech(0);
+    assert.strictEqual(boundarylessDesktop.session.chunkHasBoundary, false);
+
+    const advanceEstimateTimer = ticks => {
+      for (let tick = 0; tick < ticks; tick++) {
+        [...syntheticIntervals.values()]
+          .filter(interval => interval.delay === 100)
+          .forEach(interval => interval.callback());
+      }
+    };
+    advanceEstimateTimer(4);
+    const indexBeforePause = boundarylessDesktop.session.currentWordIndex;
+    assert(indexBeforePause > 0, 'Fallback timer should advance without native boundary events');
+
+    boundarylessDesktop.controller.pauseSpeech();
+    boundarylessDesktop.controller.resumeSpeech();
+    assert.strictEqual(boundarylessDesktop.synth.history.at(-1).action, 'resume');
+    advanceEstimateTimer(8);
+    assert(
+      boundarylessDesktop.session.currentWordIndex > indexBeforePause,
+      'Fallback timer should continue advancing the highlighted word after resume'
+    );
+    boundarylessDesktop.controller.stopTTS();
+  } finally {
+    global.setInterval = originalSetInterval;
+    global.clearInterval = originalClearInterval;
+  }
+
   // Desktop long pause test (F-09)
   const longPauseDesktop = createFixture(false);
   longPauseDesktop.controller.startSpeech(0);
