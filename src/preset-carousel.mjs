@@ -1,6 +1,7 @@
+import { darkPresets, lightPresets } from './constants.mjs';
 import { clampIndex, escapeHtml, getElementTarget, isMobileDevice } from './utils.mjs';
 
-export function createPresetCarousel(context, { getPresets, applyPreset }) {
+export function createPresetCarousel(context, { getPresets, applyPreset, setMode }) {
   const { els, state } = context;
 
   function setTrackPosition(index, animate) {
@@ -60,6 +61,13 @@ export function createPresetCarousel(context, { getPresets, applyPreset }) {
 
   function nextPreset() {
     const list = getPresets();
+    if (state.currentPresetIndex >= list.length - 1 && typeof setMode === 'function') {
+      const nextMode = state.currentMode === 'dark' ? 'light' : 'dark';
+      setMode(nextMode, { presetIndex: 0 });
+      const newList = getPresets();
+      showGestureHint(newList[0].name);
+      return;
+    }
     state.currentPresetIndex = (state.currentPresetIndex + 1) % list.length;
     applyPreset(state.currentPresetIndex);
     showGestureHint(list[state.currentPresetIndex].name);
@@ -67,6 +75,14 @@ export function createPresetCarousel(context, { getPresets, applyPreset }) {
 
   function prevPreset() {
     const list = getPresets();
+    if (state.currentPresetIndex <= 0 && typeof setMode === 'function') {
+      const nextMode = state.currentMode === 'dark' ? 'light' : 'dark';
+      const targetList = nextMode === 'dark' ? darkPresets : lightPresets;
+      const lastIndex = targetList.length - 1;
+      setMode(nextMode, { presetIndex: lastIndex });
+      showGestureHint(targetList[lastIndex].name);
+      return;
+    }
     state.currentPresetIndex = (state.currentPresetIndex - 1 + list.length) % list.length;
     applyPreset(state.currentPresetIndex);
     showGestureHint(list[state.currentPresetIndex].name);
@@ -76,8 +92,14 @@ export function createPresetCarousel(context, { getPresets, applyPreset }) {
     if (!els.gestureHintText || !els.gestureHint) return;
     els.gestureHintText.textContent = text;
     els.gestureHint.classList.add('show');
-    window.clearTimeout(state.gestureHintTimer);
-    state.gestureHintTimer = window.setTimeout(() => els.gestureHint.classList.remove('show'), 700);
+    const safeClearTimeout = (typeof window !== 'undefined' && typeof window.clearTimeout === 'function') ? window.clearTimeout : (typeof clearTimeout === 'function' ? clearTimeout : null);
+    const safeSetTimeout = (typeof window !== 'undefined' && typeof window.setTimeout === 'function') ? window.setTimeout : (typeof setTimeout === 'function' ? setTimeout : null);
+    if (safeClearTimeout) safeClearTimeout(state.gestureHintTimer);
+    if (safeSetTimeout) {
+      state.gestureHintTimer = safeSetTimeout(() => {
+        if (els.gestureHint) els.gestureHint.classList.remove('show');
+      }, 700);
+    }
   }
 
   function getCarouselWidth() {
@@ -120,7 +142,7 @@ export function createPresetCarousel(context, { getPresets, applyPreset }) {
   }
 
   function hasSelectedText() {
-    const selection = window.getSelection ? window.getSelection() : null;
+    const selection = (typeof window !== 'undefined' && window.getSelection) ? window.getSelection() : null;
     return Boolean(selection && selection.toString().trim().length > 0);
   }
 
@@ -130,12 +152,19 @@ export function createPresetCarousel(context, { getPresets, applyPreset }) {
     return Boolean(element.closest([
       'a', 'button', 'input', 'select', 'textarea', 'label', 'pre', 'code', '[contenteditable]',
       '[role="button"]', '[role="link"]', '[role="slider"]', '[role="textbox"]', '[role="combobox"]',
-      '[role="checkbox"]', '[role="radio"]'
+      '[role="checkbox"]', '[role="radio"]', '#toolbar', '.audio-player-bar', '#backBtn'
     ].join(',')));
   }
 
   function canStartPresetGesture(target) {
-    return !state.isEditing && !hasSelectedText() && !isBlockedGestureTarget(target);
+    return !hasSelectedText() && !isBlockedGestureTarget(target);
+  }
+
+  function canStartCarouselDrag(target) {
+    if (hasSelectedText()) return false;
+    const element = getElementTarget(target);
+    if (!element) return false;
+    return !element.closest('a, button, input, select, textarea');
   }
 
   function attachGestureArea(element) {
@@ -146,24 +175,39 @@ export function createPresetCarousel(context, { getPresets, applyPreset }) {
         state.isGesture = false;
         return;
       }
-      state.gestureStartX = event.touches[0].screenX;
-      state.gestureStartY = event.touches[0].screenY;
+      const touch = event.touches[0];
+      state.gestureStartX = touch.clientX !== undefined ? touch.clientX : touch.screenX;
+      state.gestureStartY = touch.clientY !== undefined ? touch.clientY : touch.screenY;
       state.gestureStartTime = Date.now();
       state.isGesture = true;
     }, { passive: true });
     element.addEventListener('touchmove', event => {
       if (!state.isGesture) return;
-      const distanceX = Math.abs(event.touches[0].screenX - state.gestureStartX);
-      const distanceY = Math.abs(event.touches[0].screenY - state.gestureStartY);
+      if (event.touches && event.touches.length !== 1) {
+        state.isGesture = false;
+        return;
+      }
+      const touch = event.touches[0];
+      const curX = touch.clientX !== undefined ? touch.clientX : touch.screenX;
+      const curY = touch.clientY !== undefined ? touch.clientY : touch.screenY;
+      const distanceX = Math.abs(curX - state.gestureStartX);
+      const distanceY = Math.abs(curY - state.gestureStartY);
       if (distanceY > distanceX && distanceY > 20) state.isGesture = false;
+    }, { passive: true });
+    element.addEventListener('touchcancel', () => {
+      state.isGesture = false;
     }, { passive: true });
     element.addEventListener('touchend', event => {
       if (!state.isGesture) return;
       state.isGesture = false;
       if (hasSelectedText() || isBlockedGestureTarget(event.target)) return;
       const elapsed = Date.now() - state.gestureStartTime;
-      const distanceX = event.changedTouches[0].screenX - state.gestureStartX;
-      const distanceY = event.changedTouches[0].screenY - state.gestureStartY;
+      const touch = event.changedTouches && event.changedTouches[0] ? event.changedTouches[0] : null;
+      if (!touch) return;
+      const endX = touch.clientX !== undefined ? touch.clientX : touch.screenX;
+      const endY = touch.clientY !== undefined ? touch.clientY : touch.screenY;
+      const distanceX = endX - state.gestureStartX;
+      const distanceY = endY - state.gestureStartY;
       if (elapsed > 500 || Math.abs(distanceX) < 55 || Math.abs(distanceY) > Math.abs(distanceX) * 0.7) return;
       if (distanceX < 0) nextPreset();
       else prevPreset();
@@ -201,7 +245,6 @@ export function createPresetCarousel(context, { getPresets, applyPreset }) {
   }
 
   function canUseGlobalPresetShortcut(event) {
-    if (state.isEditing || !els.tocDialog || els.tocDialog.open) return false;
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return false;
     if (event.target === els.presetWindow) return false;
     return !isInteractiveShortcutTarget(event.target);
@@ -210,9 +253,12 @@ export function createPresetCarousel(context, { getPresets, applyPreset }) {
   return {
     attachGestureArea,
     buildPresetCarousel,
+    canStartCarouselDrag,
+    canStartPresetGesture,
     canUseGlobalPresetShortcut,
     endCarouselDrag,
     getCarouselWidth,
+    hasSelectedText,
     isBlockedGestureTarget,
     nextPreset,
     prevPreset,

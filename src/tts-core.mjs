@@ -145,6 +145,9 @@ export function tokenizeReaderDOM(containerElement, documentObject = document) {
     while ((match = wordPattern.exec(text)) !== null) {
       if (match.index > lastIndex) {
         const whitespace = text.slice(lastIndex, match.index);
+        if (typeof documentObject.createTextNode === 'function') {
+          fragment.appendChild(documentObject.createTextNode(whitespace));
+        }
         textParts.push(whitespace);
         currentLen += whitespace.length;
         trailingWhitespace = /\s$/.test(whitespace);
@@ -170,6 +173,9 @@ export function tokenizeReaderDOM(containerElement, documentObject = document) {
     }
     if (lastIndex < text.length) {
       const trailing = text.slice(lastIndex);
+      if (typeof documentObject.createTextNode === 'function') {
+        fragment.appendChild(documentObject.createTextNode(trailing));
+      }
       textParts.push(trailing);
       currentLen += trailing.length;
       trailingWhitespace = /\s$/.test(trailing);

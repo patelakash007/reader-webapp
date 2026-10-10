@@ -52,38 +52,6 @@ export function isMobileDevice() {
   return !hasHover;
 }
 
-export function beginFileRead(context) {
-  context.runtime.file.activeReadToken += 1;
-  return context.runtime.file.activeReadToken;
-}
-
-export function cancelPendingFileRead(context) {
-  context.runtime.file.activeReadToken += 1;
-  if (context.runtime.file.activeLoadingTask && typeof context.runtime.file.activeLoadingTask.destroy === 'function') {
-    try {
-      context.runtime.file.activeLoadingTask.destroy();
-    } catch (err) {}
-    context.runtime.file.activeLoadingTask = null;
-  }
-}
-
-export function isActiveFileRead(context, readToken) {
-  return readToken === context.runtime.file.activeReadToken;
-}
-
-export function createStaleReadError() {
-  const err = new Error('Stale file read ignored.');
-  err.name = 'StaleFileReadError';
-  return err;
-}
-
-export function assertActiveFileRead(context, readToken) {
-  if (!isActiveFileRead(context, readToken)) throw createStaleReadError();
-}
-
-export function isStaleReadError(err) {
-  return err && err.name === 'StaleFileReadError';
-}
 
 export function cancelPendingRender(context, options = {}) {
   context.runtime.reader.activeRenderId += 1;

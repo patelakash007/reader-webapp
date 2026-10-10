@@ -1,9 +1,5 @@
 export const VALID_SIZES = new Set(['small', 'medium', 'large', 'xl']);
-export const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown']);
-export const SUPPORTED_EXTENSIONS = new Set([...TEXT_EXTENSIONS, 'pdf', 'docx']);
-export const MAX_FILE_SIZE = 15 * 1024 * 1024;
 export const MAX_EXTRACTED_TEXT_CHARS = 1_000_000;
-export const MAX_PDF_PAGES = 500;
 
 export const VALID_FONTS = new Set([
   'sans', 'serif', 'system', 'mono', 'minimal', 'bold', 'clean',

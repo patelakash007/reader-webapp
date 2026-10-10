@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'reader-webapp-shell-v9';
+const CACHE_NAME = 'reader-webapp-shell-v10';
 const CACHE_PREFIX = 'reader-webapp-';
 const APP_SHELL = [
   './',
@@ -13,12 +13,8 @@ const APP_SHELL = [
   './src/dom.mjs',
   './src/parser.mjs',
   './src/markdown-parser.mjs',
-  './src/text-decoder.mjs',
-  './src/pdf-parser.mjs',
-  './src/docx-parser.mjs',
   './src/reader.mjs',
   './src/reader-renderer.mjs',
-  './src/reader-editor.mjs',
   './src/reader-navigation.mjs',
   './src/settings.mjs',
   './src/preset-carousel.mjs',

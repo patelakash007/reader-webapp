@@ -27,14 +27,18 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
 
   const carousel = createPresetCarousel(context, {
     getPresets,
-    applyPreset: (...args) => applyPreset(...args)
+    applyPreset: (...args) => applyPreset(...args),
+    setMode: (...args) => setMode(...args)
   });
   const {
     attachGestureArea,
     buildPresetCarousel,
+    canStartCarouselDrag,
+    canStartPresetGesture,
     canUseGlobalPresetShortcut,
     endCarouselDrag,
     getCarouselWidth,
+    hasSelectedText,
     isBlockedGestureTarget,
     nextPreset,
     prevPreset,
@@ -57,16 +61,20 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
     const config = fontMap[nextFont];
     if (!config) return;
     ensureFontLoaded(nextFont);
-    document.documentElement.style.setProperty('--body-font', config.family);
-    document.documentElement.style.setProperty('--heading-weight', config.weight);
+    if (typeof document !== 'undefined' && document.documentElement?.style) {
+      document.documentElement.style.setProperty('--body-font', config.family);
+      document.documentElement.style.setProperty('--heading-weight', config.weight);
+    }
   }
 
   function setTheme(theme) {
     const nextTheme = VALID_THEMES.has(theme) ? theme : 'claude';
-    Array.from(document.body.classList)
-      .filter(className => className.startsWith('theme-'))
-      .forEach(className => document.body.classList.remove(className));
-    document.body.classList.add(`theme-${nextTheme}`);
+    if (typeof document !== 'undefined' && document.body?.classList) {
+      Array.from(document.body.classList)
+        .filter(className => className.startsWith('theme-'))
+        .forEach(className => document.body.classList.remove(className));
+      document.body.classList.add(`theme-${nextTheme}`);
+    }
   }
 
   function applyTextColor(color) {
@@ -119,10 +127,6 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
     const nextSize = VALID_SIZES.has(size) ? size : 'medium';
     els.readerContent.classList.remove('fs-small', 'fs-medium', 'fs-large', 'fs-xl');
     els.readerContent.classList.add(`fs-${nextSize}`);
-    if (els.readerEditor) {
-      els.readerEditor.classList.remove('fs-small', 'fs-medium', 'fs-large', 'fs-xl');
-      els.readerEditor.classList.add(`fs-${nextSize}`);
-    }
     document.querySelectorAll('[data-size]').forEach(button => {
       const active = button.getAttribute('data-size') === nextSize;
       button.classList.toggle('active', active);
@@ -162,20 +166,11 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
     }
   }
 
-
-
-
-
-
-
-
-
   function setLineHeight(value) {
     if (!els.lineHeightInput) return;
     const next = clampNumber(value, 1.85, 1.4, 2.6);
     els.lineHeightInput.value = next;
     if (els.readerContent) els.readerContent.style.lineHeight = next;
-    if (els.readerEditor) els.readerEditor.style.lineHeight = next;
   }
 
   function setLetterSpacing(value) {
@@ -183,7 +178,6 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
     const next = clampNumber(value, -0.015, -0.03, 0.15);
     els.letterSpacingInput.value = next;
     if (els.readerContent) els.readerContent.style.letterSpacing = `${next}em`;
-    if (els.readerEditor) els.readerEditor.style.letterSpacing = `${next}em`;
   }
 
   function updateMarginStyle(value) {
@@ -192,10 +186,6 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
     if (typeof window !== 'undefined' && window.innerWidth <= 640) padding = Math.min(padding, 24);
     els.readerContent.style.paddingLeft = `${padding}px`;
     els.readerContent.style.paddingRight = `${padding}px`;
-    if (els.readerEditor) {
-      els.readerEditor.style.paddingLeft = `${padding}px`;
-      els.readerEditor.style.paddingRight = `${padding}px`;
-    }
   }
 
   function bindEvents() {
@@ -203,9 +193,11 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
     initialized = true;
     if (els.modeLight) els.modeLight.addEventListener('click', () => setMode('light'));
     if (els.modeDark) els.modeDark.addEventListener('click', () => setMode('dark'));
-    document.querySelectorAll('[data-size]').forEach(button => {
-      button.addEventListener('click', () => setSize(button.getAttribute('data-size')));
-    });
+    if (typeof document !== 'undefined' && typeof document.querySelectorAll === 'function') {
+      document.querySelectorAll('[data-size]').forEach(button => {
+        button.addEventListener('click', () => setSize(button.getAttribute('data-size')));
+      });
+    }
     if (els.arrowLeft) els.arrowLeft.addEventListener('click', prevPreset);
     if (els.arrowRight) els.arrowRight.addEventListener('click', nextPreset);
     if (els.settingsSectionToggles) {
@@ -215,22 +207,23 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
     }
     if (els.presetWindow) {
       els.presetWindow.addEventListener('touchstart', event => {
-        if (event.touches.length === 1 && canStartPresetGesture(event.target)) startCarouselDrag(event.touches[0].clientX);
+        if (event.touches.length === 1 && canStartCarouselDrag(event.target)) startCarouselDrag(event.touches[0].clientX);
       }, { passive: true });
       els.presetWindow.addEventListener('touchmove', event => {
         if (state.isDraggingCarousel) state.dragCurrentX = event.touches[0].clientX;
       }, { passive: true });
       els.presetWindow.addEventListener('touchend', endCarouselDrag, { passive: true });
       els.presetWindow.addEventListener('mousedown', event => {
-        if (canStartPresetGesture(event.target)) startCarouselDrag(event.clientX);
+        if (canStartCarouselDrag(event.target)) startCarouselDrag(event.clientX);
       });
       els.presetWindow.addEventListener('click', event => {
-        if (isBlockedGestureTarget(event.target) || hasSelectedText() || state.isDraggingCarousel) return;
+        if (hasSelectedText() || state.isDraggingCarousel) return;
         if (state.lastCarouselDragDistance > 5) {
           state.lastCarouselDragDistance = 0;
           return;
         }
         const target = getElementTarget(event.target);
+        if (target && target.closest('a, button, input, select, textarea')) return;
         const card = target ? target.closest('.preset-card') : null;
         if (card) applyPreset(card.getAttribute('data-index'));
       });
@@ -251,18 +244,11 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
       if (state.isDraggingCarousel) state.dragCurrentX = event.clientX;
     });
     window.addEventListener('mouseup', endCarouselDrag);
-    if (els.readerContent) attachGestureArea(els.readerContent);
-    if (els.wordCount) attachGestureArea(els.wordCount);
+    if (els.readerView) attachGestureArea(els.readerView);
+    else if (els.readerContent) attachGestureArea(els.readerContent);
     if (els.lineHeightInput) els.lineHeightInput.addEventListener('input', () => setLineHeight(els.lineHeightInput.value));
     if (els.letterSpacingInput) els.letterSpacingInput.addEventListener('input', () => setLetterSpacing(els.letterSpacingInput.value));
     if (els.marginInput) els.marginInput.addEventListener('input', () => updateMarginStyle(els.marginInput.value));
-    if (els.smartHeadingsInput) {
-      els.smartHeadingsInput.addEventListener('change', () => {
-        state.smartHeadings = els.smartHeadingsInput.checked;
-        ui.announceLive(`Smart headings ${state.smartHeadings ? 'enabled' : 'disabled'}.`);
-        if (context.onSmartHeadingsChanged) context.onSmartHeadingsChanged();
-      });
-    }
   }
 
   return {

@@ -19,9 +19,28 @@ const LEGACY_KEYS = [
 
 export function cleanupLegacyBrowserStorage() {
   try {
-    const legacyStore = window.localStorage;
-    if (!legacyStore) return;
-    LEGACY_KEYS.forEach(key => legacyStore.removeItem(key));
+    const stores = [];
+    if (typeof window !== 'undefined') {
+      if (window.localStorage) stores.push(window.localStorage);
+      if (window.sessionStorage) stores.push(window.sessionStorage);
+    }
+    stores.forEach(store => {
+      LEGACY_KEYS.forEach(key => {
+        try { store.removeItem(key); } catch (e) {}
+      });
+      try {
+        const keysToRemove = [];
+        for (let i = 0; i < store.length; i++) {
+          const key = store.key(i);
+          if (key && (key.startsWith('reader_') || key.startsWith('reader-') || key.startsWith('reader:'))) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(k => {
+          try { store.removeItem(k); } catch (e) {}
+        });
+      } catch (e) {}
+    });
   } catch (err) {
     console.warn('Unable to clean up legacy reader storage.', err);
   }

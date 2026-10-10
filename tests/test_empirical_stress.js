@@ -157,23 +157,6 @@ const assert = require('node:assert');
   assert.strictEqual(tokenized.spans.find(span => span.textContent === 'Hello').parentNode.tagName, 'EM');
   console.log('✓ Production DOM tokenization preserved hierarchy and character offsets.');
 
-  console.log('\n--- 4. Production PDF spacing engine ---');
-  const touching = [
-    { str: 'First', transform: [1, 0, 0, 1, 10, 500], width: 30, height: 10 },
-    { str: 'Second', transform: [1, 0, 0, 1, 40.5, 500], width: 35, height: 10 }
-  ];
-  const gapped = [
-    { str: 'First', transform: [1, 0, 0, 1, 10, 500], width: 30, height: 10 },
-    { str: 'Second', transform: [1, 0, 0, 1, 45, 500], width: 35, height: 10 }
-  ];
-  const paragraphPdf = [
-    { str: 'Header', transform: [1, 0, 0, 1, 10, 500], width: 40, height: 10 },
-    { str: 'Body', transform: [1, 0, 0, 1, 10, 470], width: 30, height: 10 }
-  ];
-  assert.strictEqual(parser.extractPdfPageText(touching), 'FirstSecond');
-  assert.strictEqual(parser.extractPdfPageText(gapped), 'First Second');
-  assert.strictEqual(parser.extractPdfPageText(paragraphPdf), 'Header\n\nBody');
-  console.log('✓ Production PDF spacing handles touching words, gaps, and paragraphs.');
 
   console.log('\n--- 5. Production voice selection and rate math ---');
   const voices = tts.deduplicateAndSortVoices([

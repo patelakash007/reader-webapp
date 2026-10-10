@@ -1,28 +1,59 @@
+import { MAX_EXTRACTED_TEXT_CHARS } from './constants.mjs';
+import { escapeHtml } from './utils.mjs';
 import {
-  MAX_EXTRACTED_TEXT_CHARS,
-  MAX_FILE_SIZE,
-  SUPPORTED_EXTENSIONS,
-  TEXT_EXTENSIONS
-} from './constants.mjs';
-import {
-  assertActiveFileRead,
-  beginFileRead,
-  cancelPendingFileRead,
-  cancelPendingRender,
-  formatError,
-  escapeHtml,
-  isActiveFileRead,
-  isStaleReadError
-} from './utils.mjs';
-import { createMarkdownRenderer, createMarkedInstance, isSmartHeading, normalizeSafeLinkHref, parseInline, parseMarkdownToHtml } from './markdown-parser.mjs';
-import { decodeTextBuffer, readFileAsArrayBuffer, readFileAsText } from './text-decoder.mjs';
-import { createPdfParser, extractPdfPageText } from './pdf-parser.mjs';
-import { createDocxParser } from './docx-parser.mjs';
+  createMarkdownRenderer,
+  createMarkedInstance,
+  isSmartHeading,
+  normalizeSafeLinkHref,
+  parseInline,
+  parseMarkdownToHtml
+} from './markdown-parser.mjs';
 
 export { escapeHtml };
-export { createMarkdownRenderer, createMarkedInstance, isSmartHeading, normalizeSafeLinkHref, parseInline, parseMarkdownToHtml } from './markdown-parser.mjs';
-export { decodeTextBuffer };
-export { extractPdfPageText };
+export {
+  createMarkdownRenderer,
+  createMarkedInstance,
+  isSmartHeading,
+  normalizeSafeLinkHref,
+  parseInline,
+  parseMarkdownToHtml
+} from './markdown-parser.mjs';
+
+export function decodeTextBuffer(buffer) {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer || 0);
+  if (!bytes.length) return '';
+
+  if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+    return new TextDecoder('utf-8').decode(bytes.subarray(3));
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+    return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+    return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+  }
+
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch (err) {
+    const decoded = new TextDecoder('windows-1252').decode(bytes);
+    const windows1252Extensions = {
+      0x80: '\u20AC', 0x82: '\u201A', 0x83: '\u0192', 0x84: '\u201E',
+      0x85: '\u2026', 0x86: '\u2020', 0x87: '\u2021', 0x88: '\u02C6',
+      0x89: '\u2030', 0x8A: '\u0160', 0x8B: '\u2039', 0x8C: '\u0152',
+      0x8E: '\u017D', 0x91: '\u2018', 0x92: '\u2019', 0x93: '\u201C',
+      0x94: '\u201D', 0x95: '\u2022', 0x96: '\u2013', 0x97: '\u2014',
+      0x98: '\u02DC', 0x99: '\u2122', 0x9A: '\u0161', 0x9B: '\u203A',
+      0x9C: '\u0153', 0x9E: '\u017E', 0x9F: '\u0178'
+    };
+    return Array.from(decoded, (char, index) => {
+      const byte = bytes[index];
+      return char.charCodeAt(0) === byte && windows1252Extensions[byte]
+        ? windows1252Extensions[byte]
+        : char;
+    }).join('');
+  }
+}
 
 export function getExtension(fileName) {
   const dot = fileName.lastIndexOf('.');
@@ -37,83 +68,9 @@ export function enforceExtractedTextLimit(text, context = 'document') {
   return value;
 }
 
-export function createParser(context, { ui, onTextLoaded }) {
-  const pdfParser = createPdfParser(context, { ui });
-  const docxParser = createDocxParser(context, { ui, enforceTextLimit: enforceExtractedTextLimit });
-
-  function loadLibrary(name) {
-    if (name === 'pdf') return pdfParser.loadLibrary();
-    if (name === 'mammoth') return docxParser.loadLibrary();
-    throw new Error(`Unknown library: ${name}`);
-  }
-
-  function showReadLoader(readToken, message) {
-    if (isActiveFileRead(context, readToken)) ui.showLoader(message);
-  }
-
-  async function readSelectedFile(file, extension, readToken) {
-    assertActiveFileRead(context, readToken);
-    if (TEXT_EXTENSIONS.has(extension)) {
-      showReadLoader(readToken, 'Reading text file...');
-      const text = await readFileAsText(file);
-      assertActiveFileRead(context, readToken);
-      return enforceExtractedTextLimit(text, 'text file');
-    }
-    if (extension === 'pdf') {
-      showReadLoader(readToken, 'Parsing PDF document...');
-      const arrayBuffer = await readFileAsArrayBuffer(file);
-      assertActiveFileRead(context, readToken);
-      return pdfParser.extractPdfText(arrayBuffer, readToken);
-    }
-    if (extension === 'docx') {
-      showReadLoader(readToken, 'Parsing DOCX document...');
-      const arrayBuffer = await readFileAsArrayBuffer(file);
-      assertActiveFileRead(context, readToken);
-      return docxParser.extractDocxText(arrayBuffer, readToken);
-    }
-    throw new Error('Unsupported file extension.');
-  }
-
-  async function handleFile(event) {
-    const target = event && event.target ? event.target : null;
-    const file = target && target.files && target.files[0];
-    if (!file) return;
-
-    const extension = getExtension(file.name);
-    cancelPendingFileRead(context);
-    const readToken = beginFileRead(context);
-    cancelPendingRender(context);
-    ui.clearStatus();
-
-    if (file.size > MAX_FILE_SIZE) {
-      ui.hideLoader();
-      ui.showStatus(`File "${file.name}" is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Limit is 15MB.`, 'error');
-      if (target && 'value' in target) target.value = '';
-      return;
-    }
-    if (file.size === 0) {
-      ui.hideLoader();
-      ui.showStatus(`File "${file.name}" is empty.`, 'error');
-      if (target && 'value' in target) target.value = '';
-      return;
-    }
-
-    try {
-      if (!SUPPORTED_EXTENSIONS.has(extension)) {
-        throw new Error('Unsupported format. Please upload TXT, Markdown (.md or .markdown), PDF, or DOCX documents.');
-      }
-      const text = await readSelectedFile(file, extension, readToken);
-      assertActiveFileRead(context, readToken);
-      ui.hideLoader();
-      onTextLoaded(text, file.name);
-    } catch (err) {
-      if (isStaleReadError(err) || !isActiveFileRead(context, readToken)) return;
-      ui.hideLoader();
-      ui.showStatus(`Failed to read "${file.name}": ${formatError(err)}`, 'error');
-    } finally {
-      if (target && 'value' in target) target.value = '';
-    }
-  }
-
-  return { enforceExtractedTextLimit, extractDocxText: docxParser.extractDocxText, extractPdfText: pdfParser.extractPdfText, getExtension, handleFile, loadLibrary, readSelectedFile };
+export function createParser(context, { ui, onTextLoaded } = {}) {
+  return {
+    enforceExtractedTextLimit,
+    parseMarkdownToHtml
+  };
 }

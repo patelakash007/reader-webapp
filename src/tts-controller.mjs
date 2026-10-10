@@ -291,7 +291,9 @@ export function createTTS(context, { ui }) {
   function buildUtterance(chunk, generation) {
     const utterance = new SpeechSynthesisUtterance(chunk.text);
     const voice = getSelectedVoice();
-    if (voice) utterance.voice = voice;
+    if (voice) {
+      try { utterance.voice = voice; } catch (err) {}
+    }
     utterance.rate = clampNumber(els.voiceRateInput ? els.voiceRateInput.value : '1.0', 1.0, 0.5, 2.5);
     utterance.pitch = 1;
     session.chunkHasBoundary = false;

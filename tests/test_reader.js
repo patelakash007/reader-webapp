@@ -38,17 +38,6 @@ const path = require('node:path');
   assert.deepStrictEqual(giantChunks.map(chunk => chunk.text.length), [190, 60]);
   console.log('✓ Check 2: 190-character chunking algorithm passed.');
 
-  const pdfItemsSameLine = [
-    { str: 'Hello', transform: [1, 0, 0, 1, 50, 700], width: 30, height: 12 },
-    { str: 'World', transform: [1, 0, 0, 1, 90, 700], width: 35, height: 12 }
-  ];
-  assert.strictEqual(parser.extractPdfPageText(pdfItemsSameLine), 'Hello World');
-  const pdfItemsNewLine = [
-    { str: 'Heading Line', transform: [1, 0, 0, 1, 50, 700], width: 80, height: 12 },
-    { str: 'Paragraph line', transform: [1, 0, 0, 1, 50, 670], width: 90, height: 12 }
-  ];
-  assert(parser.extractPdfPageText(pdfItemsNewLine).includes('Heading Line\n\nParagraph line'));
-  console.log('✓ Check 3: Production PDF text extraction spacing passed.');
 
   const mockVoices = [
     { name: 'Google US English', lang: 'en-US', voiceURI: 'google-en-us', default: false },
