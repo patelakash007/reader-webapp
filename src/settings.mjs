@@ -33,9 +33,12 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
   const {
     attachGestureArea,
     buildPresetCarousel,
+    canStartCarouselDrag,
+    canStartPresetGesture,
     canUseGlobalPresetShortcut,
     endCarouselDrag,
     getCarouselWidth,
+    hasSelectedText,
     isBlockedGestureTarget,
     nextPreset,
     prevPreset,
@@ -204,22 +207,23 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
     }
     if (els.presetWindow) {
       els.presetWindow.addEventListener('touchstart', event => {
-        if (event.touches.length === 1 && canStartPresetGesture(event.target)) startCarouselDrag(event.touches[0].clientX);
+        if (event.touches.length === 1 && canStartCarouselDrag(event.target)) startCarouselDrag(event.touches[0].clientX);
       }, { passive: true });
       els.presetWindow.addEventListener('touchmove', event => {
         if (state.isDraggingCarousel) state.dragCurrentX = event.touches[0].clientX;
       }, { passive: true });
       els.presetWindow.addEventListener('touchend', endCarouselDrag, { passive: true });
       els.presetWindow.addEventListener('mousedown', event => {
-        if (canStartPresetGesture(event.target)) startCarouselDrag(event.clientX);
+        if (canStartCarouselDrag(event.target)) startCarouselDrag(event.clientX);
       });
       els.presetWindow.addEventListener('click', event => {
-        if (isBlockedGestureTarget(event.target) || hasSelectedText() || state.isDraggingCarousel) return;
+        if (hasSelectedText() || state.isDraggingCarousel) return;
         if (state.lastCarouselDragDistance > 5) {
           state.lastCarouselDragDistance = 0;
           return;
         }
         const target = getElementTarget(event.target);
+        if (target && target.closest('a, button, input, select, textarea')) return;
         const card = target ? target.closest('.preset-card') : null;
         if (card) applyPreset(card.getAttribute('data-index'));
       });

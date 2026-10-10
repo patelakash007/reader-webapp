@@ -142,7 +142,7 @@ export function createPresetCarousel(context, { getPresets, applyPreset, setMode
   }
 
   function hasSelectedText() {
-    const selection = window.getSelection ? window.getSelection() : null;
+    const selection = (typeof window !== 'undefined' && window.getSelection) ? window.getSelection() : null;
     return Boolean(selection && selection.toString().trim().length > 0);
   }
 
@@ -158,6 +158,13 @@ export function createPresetCarousel(context, { getPresets, applyPreset, setMode
 
   function canStartPresetGesture(target) {
     return !hasSelectedText() && !isBlockedGestureTarget(target);
+  }
+
+  function canStartCarouselDrag(target) {
+    if (hasSelectedText()) return false;
+    const element = getElementTarget(target);
+    if (!element) return false;
+    return !element.closest('a, button, input, select, textarea');
   }
 
   function attachGestureArea(element) {
@@ -246,9 +253,12 @@ export function createPresetCarousel(context, { getPresets, applyPreset, setMode
   return {
     attachGestureArea,
     buildPresetCarousel,
+    canStartCarouselDrag,
+    canStartPresetGesture,
     canUseGlobalPresetShortcut,
     endCarouselDrag,
     getCarouselWidth,
+    hasSelectedText,
     isBlockedGestureTarget,
     nextPreset,
     prevPreset,

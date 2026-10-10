@@ -434,7 +434,7 @@ async function runDeepPlaywrightChecks() {
 }
 
 runDeepPlaywrightChecks().catch(error => {
-  console.error(error.message);
+  console.error(error.stack || error.message);
   console.error('If Playwright browser launch failed, set BROWSER_EXE, PLAYWRIGHT_CHROMIUM_EXECUTABLE, or CHROMIUM_EXECUTABLE to a Chromium-compatible executable.');
   process.exit(1);
 });

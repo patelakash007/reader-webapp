@@ -833,6 +833,74 @@ const path = require('node:path');
   assert.strictEqual(swipeContext.state.isGesture, false, 'touchcancel must reset isGesture');
   console.log('✓ Touch coordinate resolution with clientX/screenX fallback verified.');
 
+  console.log('\n--- 39. Presets: Carousel drag start and card click selection on presetWindow ---');
+  let currentAriaLabel = '';
+  const testPresetWindowListeners = {};
+  const testWindowListeners = {};
+  global.window = {
+    addEventListener: (t, cb) => { testWindowListeners[t] = cb; },
+    removeEventListener: () => {},
+    getSelection: () => null,
+    requestAnimationFrame: () => {}
+  };
+  global.document = {
+    addEventListener: () => {},
+    querySelectorAll: () => []
+  };
+  const testPresetWindow = {
+    nodeType: 1,
+    addEventListener: (t, cb) => { testPresetWindowListeners[t] = cb; },
+    getAttribute: (attr) => attr === 'aria-label' ? currentAriaLabel : null,
+    setAttribute: (attr, val) => { if (attr === 'aria-label') currentAriaLabel = val; },
+    getBoundingClientRect: () => ({ width: 300 }),
+    closest: (sel) => sel.includes('#toolbar') ? { id: 'toolbar' } : null
+  };
+  const testCarouselContext = createAppContext({
+    presetWindow: testPresetWindow,
+    presetTrack: { classList: makeClassList2(), querySelectorAll: () => [], style: {} },
+    presetDots: { innerHTML: '', querySelectorAll: () => [] },
+    themeSettingsSummary: { textContent: '' },
+    gestureHint: { classList: makeClassList2() },
+    gestureHintText: { textContent: '' },
+    modeLight: { classList: makeClassList2(), setAttribute() {}, addEventListener() {} },
+    modeDark: { classList: makeClassList2(), setAttribute() {}, addEventListener() {} },
+    readerContent: { style: { setProperty() {}, removeProperty() {} }, classList: makeClassList2(), addEventListener() {} }
+  });
+  const testCarouselSettings = createSettings(testCarouselContext, {
+    ui: mockUI,
+    onResetToolbarTimer: () => {},
+    isMobileSheetLayout: () => false
+  });
+  testCarouselSettings.bindEvents();
+
+  // Drag on presetWindow
+  testPresetWindowListeners.mousedown({ clientX: 200, target: testPresetWindow });
+  assert.strictEqual(testCarouselContext.state.isDraggingCarousel, true, 'mousedown on presetWindow must start carousel drag');
+  testWindowListeners.mousemove({ clientX: 100 });
+  testWindowListeners.mouseup();
+  assert.strictEqual(testCarouselContext.state.isDraggingCarousel, false);
+  assert(testCarouselContext.state.lastCarouselDragDistance > 5, 'lastCarouselDragDistance must reflect drag distance');
+
+  // Suppressed card click
+  const mockCard1 = {
+    nodeType: 1,
+    closest: (sel) => sel === '.preset-card' ? mockCard1 : (sel.includes('#toolbar') ? { id: 'toolbar' } : null),
+    getAttribute: (attr) => attr === 'data-index' ? '1' : null
+  };
+  testPresetWindowListeners.click({ target: mockCard1 });
+  assert.strictEqual(testCarouselContext.state.lastCarouselDragDistance, 0, 'click suppression must reset lastCarouselDragDistance');
+
+  // Card 2 click applies preset 2 (Stark)
+  const mockCard2 = {
+    nodeType: 1,
+    closest: (sel) => sel === '.preset-card' ? mockCard2 : (sel.includes('#toolbar') ? { id: 'toolbar' } : null),
+    getAttribute: (attr) => attr === 'data-index' ? '2' : null
+  };
+  testPresetWindowListeners.click({ target: mockCard2 });
+  assert.strictEqual(testCarouselContext.state.currentPresetIndex, 2, 'clicking preset card must apply preset index 2');
+  assert(currentAriaLabel.includes('Stark'), 'aria-label must update to Stark');
+  console.log('✓ Preset carousel drag and card click selection verified on presetWindow.');
+
   console.log('\n====================================================');
   console.log('ALL REGRESSION TESTS PASSED SUCCESSFULLY');
   console.log('====================================================\n');
