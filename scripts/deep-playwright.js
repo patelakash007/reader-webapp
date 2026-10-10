@@ -125,19 +125,26 @@ async function runDeepPlaywrightChecks() {
       acceptDownloads: true
     });
     await context.addInitScript(() => {
-      if (!('SpeechSynthesisUtterance' in window)) {
-        window.SpeechSynthesisUtterance = class {
-          constructor(text) {
-            this.text = text;
-            this.rate = 1;
-            this.pitch = 1;
-            this.voice = null;
-            this.onstart = null;
-            this.onboundary = null;
-            this.onend = null;
-            this.onerror = null;
-          }
-        };
+      class MockSpeechSynthesisUtterance {
+        constructor(text) {
+          this.text = text;
+          this.rate = 1;
+          this.pitch = 1;
+          this.voice = null;
+          this.onstart = null;
+          this.onboundary = null;
+          this.onend = null;
+          this.onerror = null;
+        }
+      }
+      try {
+        Object.defineProperty(window, 'SpeechSynthesisUtterance', {
+          value: MockSpeechSynthesisUtterance,
+          configurable: true,
+          writable: true
+        });
+      } catch (err) {
+        window.SpeechSynthesisUtterance = MockSpeechSynthesisUtterance;
       }
       class MockSpeechSynthesis {
         constructor() {
