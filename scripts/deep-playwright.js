@@ -124,6 +124,68 @@ async function runDeepPlaywrightChecks() {
       viewport: { width: 1365, height: 900 },
       acceptDownloads: true
     });
+    await context.addInitScript(() => {
+      if (!('SpeechSynthesisUtterance' in window)) {
+        window.SpeechSynthesisUtterance = class {
+          constructor(text) {
+            this.text = text;
+            this.rate = 1;
+            this.pitch = 1;
+            this.voice = null;
+            this.onstart = null;
+            this.onboundary = null;
+            this.onend = null;
+            this.onerror = null;
+          }
+        };
+      }
+      class MockSpeechSynthesis {
+        constructor() {
+          this.speaking = false;
+          this.paused = false;
+          this.pending = false;
+          this.onvoiceschanged = null;
+          this._voices = [
+            { name: 'Playwright Test Voice', lang: 'en-US', voiceURI: 'pw-test-voice', default: true }
+          ];
+        }
+        getVoices() {
+          return this._voices;
+        }
+        speak(utterance) {
+          this.speaking = true;
+          this.paused = false;
+          if (utterance) {
+            this._currentUtterance = utterance;
+            setTimeout(() => {
+              if (this.speaking && utterance.onstart) utterance.onstart();
+            }, 0);
+          }
+        }
+        pause() {
+          this.paused = true;
+          this.speaking = false;
+        }
+        resume() {
+          this.paused = false;
+          this.speaking = true;
+        }
+        cancel() {
+          this.speaking = false;
+          this.paused = false;
+        }
+      }
+      const mockSynth = new MockSpeechSynthesis();
+      try {
+        Object.defineProperty(window, 'speechSynthesis', {
+          value: mockSynth,
+          configurable: true,
+          writable: true
+        });
+      } catch (err) {
+        window.speechSynthesis = mockSynth;
+      }
+    });
     const page = await context.newPage();
     const browserErrors = [];
     capturePageErrors(page, browserErrors);
