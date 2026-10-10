@@ -901,6 +901,105 @@ const path = require('node:path');
   assert(currentAriaLabel.includes('Stark'), 'aria-label must update to Stark');
   console.log('✓ Preset carousel drag and card click selection verified on presetWindow.');
 
+  console.log('\n--- 40. DOM Tokenization: Preserves inter-word and trailing whitespace in DOM textContent ---');
+  class MockDOMNode {
+    constructor(nodeType, nodeValue = null, tagName = null) {
+      this.nodeType = nodeType;
+      this.nodeValue = nodeValue;
+      this.tagName = tagName;
+      this.childNodes = [];
+      this.parentNode = null;
+      this.attributes = {};
+      this.className = '';
+    }
+    get parentElement() {
+      return this.nodeType === 1 ? this : this.parentNode && this.parentNode.nodeType === 1 ? this.parentNode : null;
+    }
+    appendChild(child) {
+      child.parentNode = this;
+      this.childNodes.push(child);
+      return child;
+    }
+    replaceChild(newChild, oldChild) {
+      const index = this.childNodes.indexOf(oldChild);
+      if (index === -1) return;
+      if (newChild.nodeType === 11) {
+        const children = [...newChild.childNodes];
+        children.forEach(child => { child.parentNode = this; });
+        this.childNodes.splice(index, 1, ...children);
+        newChild.childNodes = [];
+      } else {
+        newChild.parentNode = this;
+        this.childNodes.splice(index, 1, newChild);
+      }
+    }
+    setAttribute(name, value) { this.attributes[name] = value; }
+    getAttribute(name) { return this.attributes[name] || null; }
+    hasAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attributes, name); }
+    closest(selector) {
+      const tags = selector.split(',').map(value => value.trim().toUpperCase());
+      let current = this;
+      while (current) {
+        if (current.tagName && tags.includes(current.tagName.toUpperCase())) return current;
+        current = current.parentNode;
+      }
+      return null;
+    }
+    get textContent() {
+      return this.nodeType === 3 ? this.nodeValue : this.childNodes.map(child => child.textContent).join('');
+    }
+    set textContent(value) {
+      this.childNodes = [new MockDOMNode(3, value)];
+      this.childNodes[0].parentNode = this;
+    }
+  }
+
+  class MockDOMDoc {
+    createTextNode(text) { return new MockDOMNode(3, text); }
+    createElement(tag) { return new MockDOMNode(1, null, tag.toUpperCase()); }
+    createDocumentFragment() { return new MockDOMNode(11); }
+    createTreeWalker(root, showWhat, filter) {
+      const nodes = [];
+      const visit = node => {
+        if (node.nodeType === 3) {
+          if (!filter || filter.acceptNode(node) !== 3) nodes.push(node);
+          return;
+        }
+        node.childNodes.forEach(visit);
+      };
+      visit(root);
+      let index = -1;
+      return {
+        currentNode: null,
+        nextNode() {
+          index += 1;
+          this.currentNode = nodes[index] || null;
+          return Boolean(this.currentNode);
+        }
+      };
+    }
+  }
+
+  const tokDoc = new MockDOMDoc();
+  const tokH1 = tokDoc.createElement('h1');
+  tokH1.appendChild(tokDoc.createTextNode('Smoke Test'));
+  const tokP = tokDoc.createElement('p');
+  tokP.appendChild(tokDoc.createTextNode('Reader Webapp renders '));
+  const tokStrong = tokDoc.createElement('strong');
+  tokStrong.appendChild(tokDoc.createTextNode('Markdown'));
+  tokP.appendChild(tokStrong);
+  tokP.appendChild(tokDoc.createTextNode(' text in browser smoke checks.'));
+  const tokContainer = tokDoc.createElement('div');
+  tokContainer.appendChild(tokH1);
+  tokContainer.appendChild(tokP);
+
+  const tokResult = tts.tokenizeReaderDOM(tokContainer, tokDoc);
+  assert(tokContainer.textContent.includes('Smoke Test'), `DOM textContent must preserve spaces between words, got: ${tokContainer.textContent}`);
+  assert(tokContainer.textContent.includes('Reader Webapp renders Markdown text in browser smoke checks.'), `DOM textContent must preserve spaces around formatted spans, got: ${tokContainer.textContent}`);
+  assert.strictEqual(tokResult.spans.length, 11, `Expected 11 word spans, got: ${tokResult.spans.length}`);
+  assert(tokResult.spans.every(span => span.hasAttribute('data-word-idx')), 'All word spans must have data-word-idx');
+  console.log('✓ Preserved inter-word and trailing whitespace in DOM textContent after tokenization.');
+
   console.log('\n====================================================');
   console.log('ALL REGRESSION TESTS PASSED SUCCESSFULLY');
   console.log('====================================================\n');
