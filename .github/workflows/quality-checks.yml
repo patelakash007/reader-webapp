@@ -40,11 +40,6 @@ jobs:
             "README.md"
             "LICENSE"
             "vendor/marked.esm.mjs"
-            "vendor/pdf.min.mjs"
-            "vendor/pdf.worker.min.mjs"
-            "vendor/pdf.min.js"
-            "vendor/pdf.worker.min.js"
-            "vendor/mammoth.browser.min.js"
           )
 
           for file in "${required_files[@]}"; do

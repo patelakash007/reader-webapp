@@ -6,7 +6,6 @@ import { createSettings } from './settings.mjs';
 import { cleanupLegacyBrowserStorage } from './storage.mjs';
 import { createTTS } from './tts.mjs';
 import { createUI } from './ui.mjs';
-import { clampNumber } from './utils.mjs';
 
 let initialized = false;
 
@@ -32,11 +31,8 @@ export function init(documentObject = document) {
   const context = createAppContext(els);
   const ui = createUI(context);
   const tts = createTTS(context, { ui });
+  const parser = createParser(context, { ui });
   let reader;
-  const parser = createParser(context, {
-    ui,
-    onTextLoaded: (text, fileName) => reader.loadTextFlow(text, 'file', fileName)
-  });
   const settings = createSettings(context, {
     ui,
     getSettings: () => settings,
@@ -49,17 +45,6 @@ export function init(documentObject = document) {
     tts,
     ui
   });
-  context.onSmartHeadingsChanged = () => {
-    if (!context.state.currentText || !els.readerView || !els.readerView.classList.contains('active') || context.state.isEditing) return;
-    if (tts && typeof tts.invalidateTokenization === 'function') {
-      tts.invalidateTokenization();
-    }
-    const currentScroll = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
-    reader.renderTextAsync(context.state.currentText, () => {
-      reader.scheduleWordCountUpdate();
-      window.scrollTo(0, currentScroll);
-    });
-  };
 
   cleanupLegacyBrowserStorage();
   registerServiceWorker();
@@ -69,7 +54,6 @@ export function init(documentObject = document) {
 
   settings.resetSettingsSections();
   context.state.smartHeadings = true;
-  if (els.smartHeadingsInput) els.smartHeadingsInput.checked = context.state.smartHeadings;
   settings.setMode('light', { presetIndex: 0, resetTimer: false });
   settings.setSize('medium');
   reader.toggleClearBtn();
@@ -91,24 +75,6 @@ export function init(documentObject = document) {
   if (els.voiceRateInput) els.voiceRateInput.value = defaultVoiceRate;
   if (els.voiceRateVal) els.voiceRateVal.textContent = `${defaultVoiceRate.toFixed(1)}x`;
   if (els.audioSpeedBtn) els.audioSpeedBtn.textContent = `${defaultVoiceRate.toFixed(1)}x`;
-
-  const defaultScrollSpeed = 0.04;
-  if (els.scrollSpeedInput) els.scrollSpeedInput.value = defaultScrollSpeed;
-  context.runtime.autoScroll.speed = defaultScrollSpeed;
-  if (els.scrollSpeedVal) els.scrollSpeedVal.textContent = `${(defaultScrollSpeed / 0.04).toFixed(1)}x`;
-
-  if (els.scrollSpeedInput && els.scrollSpeedVal) {
-    els.scrollSpeedInput.addEventListener('input', () => {
-      const next = clampNumber(els.scrollSpeedInput.value, 0.04, 0.01, 0.2);
-      els.scrollSpeedInput.value = next;
-      context.runtime.autoScroll.speed = next;
-      if (els.scrollSpeedVal) els.scrollSpeedVal.textContent = `${(next / 0.04).toFixed(1)}x`;
-    });
-    els.scrollSpeedInput.addEventListener('change', () => {
-      const next = clampNumber(els.scrollSpeedInput.value, 0.04, 0.01, 0.2);
-      ui.announceLive(`Auto-scroll speed changed to ${(next / 0.04).toFixed(1)}x.`);
-    });
-  }
 
   tts.initializeVoices();
   return { context, parser, reader, settings, tts, ui };

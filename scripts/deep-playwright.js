@@ -240,15 +240,6 @@ async function runDeepPlaywrightChecks() {
     await page.waitForFunction(() => document.querySelector('#presetWindow')?.getAttribute('aria-label')?.includes('Stark'));
     results.push('Carousel drag suppression resets before later card clicks.');
 
-    await expandSettingsSection(page, 'tools');
-    await page.click('#tocBtn');
-    await page.waitForSelector('#tocDialog[open]');
-    const tocItems = await page.locator('#tocBody .toc-item').count();
-    assert(tocItems >= 2, 'TOC did not include rendered headings.');
-    await page.click('#closeTocBtn');
-    await page.waitForFunction(() => !document.querySelector('#tocDialog')?.open);
-    results.push('TOC open and close flow passed.');
-
     await expandSettingsSection(page, 'text');
     await page.locator('#lineHeightInput').fill('2.2');
     await page.locator('#lineHeightInput').dispatchEvent('input');
@@ -311,80 +302,9 @@ async function runDeepPlaywrightChecks() {
     });
     results.push('TTS audio controls, tokenization, and lifecycle passed.');
 
-    await expandSettingsSection(page, 'tools');
-    await page.click('#editBtn');
-    await page.waitForSelector('#readerEditor:not([hidden])');
-    assert(await page.isHidden('#readerContent'), 'Reader content must be hidden in edit mode');
-    assert(await page.isVisible('#readerEditor'), 'Reader editor must be visible in edit mode');
-    await page.click('#cancelEditBannerBtn');
-    assert(await page.isVisible('#readerContent'), 'Reader content must be visible after cancel');
-    assert(await page.isHidden('#readerEditor'), 'Reader editor must be hidden after cancel');
-    await page.click('#editBtn');
-    assert(await page.isHidden('#readerContent'), 'Reader content must be hidden in edit mode');
-    assert(await page.isVisible('#readerEditor'), 'Reader editor must be visible in edit mode');
-    await page.locator('#readerEditor').fill('## Edited Heading\n\nEdited body with **bold** text.');
-    await page.click('#saveEditBannerBtn');
-    await page.waitForFunction(() => document.querySelector('#readerContent h2')?.textContent.includes('Edited Heading'));
-    assert(await page.isVisible('#readerContent'), 'Reader content must be visible after save');
-    assert(await page.isHidden('#readerEditor'), 'Reader editor must be hidden after save');
-    const editState = await page.evaluate(() => ({
-      currentText: document.querySelector('#readerContent')?.textContent || '',
-      bannerVisible: document.querySelector('#editingBanner')?.classList.contains('show')
-    }));
-    assert(editState.currentText.includes('Edited body with bold text.'), 'Edited markdown was not re-rendered.');
-    assert(editState.bannerVisible === false, 'Editing banner stayed visible after save.');
-
-    // Test empty editor save -> edits discarded, previous text rendered
-    await expandSettingsSection(page, 'tools');
-    await page.click('#editBtn');
-    await page.locator('#readerEditor').fill('   ');
-    await page.click('#saveEditBannerBtn');
-    assert(await page.isVisible('#readerContent'), 'Reader content must remain visible after empty save');
-    assert(await page.isHidden('#readerEditor'), 'Reader editor must be hidden after empty save');
-    const preservedText = await page.locator('#readerContent').textContent();
-    assert(preservedText.includes('Edited Heading'), 'Previous text must be preserved after empty save');
-
-    results.push('Edit and save flow passed.');
-
-    const downloadPromise = page.waitForEvent('download');
-    await expandSettingsSection(page, 'tools');
-    await page.click('#downloadBtn');
-    const download = await downloadPromise;
-    const filename = download.suggestedFilename();
-    assert(/^Edited_Heading_\d{4}-\d{2}-\d{2}\.txt$/.test(filename) || filename === 'Reader_Export.txt', `Unexpected download file name: ${filename}`);
-    await download.delete();
-    results.push('Download flow passed.');
-
     await page.click('#backBtn');
     await page.waitForSelector('#inputView:not(.hidden)');
-    await page.setInputFiles('#fileInput', {
-      name: 'sample.markdown',
-      mimeType: 'text/markdown',
-      buffer: Buffer.from('# Uploaded\n\nUploaded body')
-    });
-    await page.waitForSelector('#readerView.active');
-    await waitForText(page, '#readerContent', 'Uploaded body');
-    results.push('Markdown file upload passed.');
-
-    await page.click('#backBtn');
-    await page.waitForSelector('#inputView:not(.hidden)');
-    await page.setInputFiles('#fileInput', {
-      name: 'malware.exe',
-      mimeType: 'application/octet-stream',
-      buffer: Buffer.from('x')
-    });
-    await page.waitForFunction(() => document.querySelector('#statusMessage')?.classList.contains('show'));
-    const unsupportedStatus = await getStatusText(page);
-    assert(/Unsupported format/i.test(unsupportedStatus), `Unsupported file status was wrong: ${unsupportedStatus}`);
-    results.push('Unsupported file status passed.');
-
-    await page.setInputFiles('#fileInput', {
-      name: 'empty.txt',
-      mimeType: 'text/plain',
-      buffer: Buffer.alloc(0)
-    });
-    await page.waitForFunction(() => /empty/i.test(document.querySelector('#statusMessage')?.textContent || ''));
-    results.push('Empty file status passed.');
+    results.push('Navigation back to input view passed.');
 
     const serviceWorkerReady = await page.evaluate(async () => {
       if (!('serviceWorker' in navigator)) return false;
@@ -484,41 +404,9 @@ async function runDeepPlaywrightChecks() {
     screenshots.push(path.join(outputDir, 'deep-mobile-collapsed.png'));
     await mobilePage.screenshot({ path: screenshots[screenshots.length - 1], fullPage: false });
 
-    await mobilePage.click('#mobileFab');
-    await mobilePage.waitForSelector('#toolbar.expanded');
-    await expandSettingsSection(mobilePage, 'tools');
-    await mobilePage.click('#focusBtn');
-    await mobilePage.waitForFunction(() => document.body.classList.contains('focus-mode-active'));
-    await mobilePage.waitForFunction(() => {
-      const backdrop = document.querySelector('#sheetBackdrop');
-      return !backdrop || (!backdrop.classList.contains('show') && getComputedStyle(backdrop).opacity === '0');
-    });
-    const mobileFocusState = await mobilePage.evaluate(() => {
-      const backdrop = document.querySelector('#sheetBackdrop');
-      const toolbar = document.querySelector('#toolbar');
-      const mobileFab = document.querySelector('#mobileFab');
-      const centerTarget = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
-
-      return {
-        backdropVisible: Boolean(backdrop && backdrop.classList.contains('show')),
-        backdropOpacity: backdrop ? getComputedStyle(backdrop).opacity : null,
-        toolbarExpanded: Boolean(toolbar && toolbar.classList.contains('expanded')),
-        toolbarHidden: Boolean(toolbar && toolbar.classList.contains('force-hidden')),
-        fabExpanded: mobileFab ? mobileFab.getAttribute('aria-expanded') : null,
-        centerTargetId: centerTarget ? centerTarget.id : ''
-      };
-    });
-    assert(mobileFocusState.toolbarHidden, 'Mobile focus mode did not hide the toolbar.');
-    assert(!mobileFocusState.toolbarExpanded, 'Mobile focus mode left the bottom sheet expanded.');
-    assert(!mobileFocusState.backdropVisible, 'Mobile focus mode left the sheet backdrop visible.');
-    assert(mobileFocusState.backdropOpacity === '0', `Mobile focus mode backdrop opacity stayed at ${mobileFocusState.backdropOpacity}.`);
-    assert(mobileFocusState.fabExpanded === 'false', 'Mobile focus mode left the settings FAB expanded.');
-    assert(mobileFocusState.centerTargetId !== 'sheetBackdrop', 'Mobile focus mode backdrop blocked the reader viewport.');
-    screenshots.push(path.join(outputDir, 'deep-mobile-focus.png'));
-    await mobilePage.screenshot({ path: screenshots[screenshots.length - 1], fullPage: false });
     assert(mobileErrors.length === 0, `Mobile browser errors:\n${mobileErrors.join('\n')}`);
     await mobileContext.close();
-    results.push('Mobile settings and focus-mode flow passed.');
+    results.push('Mobile settings drawer interaction flow passed.');
 
     assert(browserErrors.length === 0, `Browser errors:\n${browserErrors.join('\n')}`);
 

@@ -144,23 +144,23 @@ function resetRuntime() {
 
 async function testInstallAndActivateVersionedCaches() {
   resetRuntime();
-  queueFetch(...Array.from({ length: 31 }, () => new FakeResponse('asset')));
+  queueFetch(...Array.from({ length: 27 }, () => new FakeResponse('asset')));
 
   const installEvent = makeEvent();
   eventHandlers.get('install')(installEvent);
   await drainWaitUntil();
 
   assert.equal(self.skipWaitingCalls > 0, true, 'install should call skipWaiting');
-  assert.equal(cachesByName.has('reader-webapp-shell-v9'), true, 'install should create current cache');
+  assert.equal(cachesByName.has('reader-webapp-shell-v10'), true, 'install should create current cache');
 
-  cachesByName.set('reader-webapp-shell-v8', new FakeCache());
+  cachesByName.set('reader-webapp-shell-v9', new FakeCache());
   cachesByName.set('unrelated-cache', new FakeCache());
   const activateEvent = makeEvent();
   eventHandlers.get('activate')(activateEvent);
   await drainWaitUntil();
 
-  assert.equal(cachesByName.has('reader-webapp-shell-v8'), false, 'old reader cache should be deleted');
-  assert.equal(cachesByName.has('reader-webapp-shell-v9'), true, 'current reader cache should remain');
+  assert.equal(cachesByName.has('reader-webapp-shell-v9'), false, 'old reader cache should be deleted');
+  assert.equal(cachesByName.has('reader-webapp-shell-v10'), true, 'current reader cache should remain');
   assert.equal(cachesByName.has('unrelated-cache'), true, 'unrelated caches should not be deleted');
   assert.equal(self.clients.claimCalls > 0, true, 'activate should claim clients');
 }
@@ -168,8 +168,8 @@ async function testInstallAndActivateVersionedCaches() {
 async function testVendorUsesStaleWhileRevalidate() {
   resetRuntime();
   const cache = new FakeCache();
-  cachesByName.set('reader-webapp-shell-v9', cache);
-  const request = new FakeRequest('https://reader.example.test/vendor/mammoth.browser.min.js');
+  cachesByName.set('reader-webapp-shell-v10', cache);
+  const request = new FakeRequest('https://reader.example.test/vendor/marked.esm.mjs');
   await cache.put(request, new FakeResponse('old-vendor'));
   queueFetch(new FakeResponse('new-vendor'));
 
@@ -187,9 +187,9 @@ async function testVendorUsesStaleWhileRevalidate() {
 async function testVendorOfflineFallback() {
   resetRuntime();
   const cache = new FakeCache();
-  cachesByName.set('reader-webapp-shell-v9', cache);
-  const request = new FakeRequest('https://reader.example.test/vendor/pdf.min.mjs');
-  await cache.put(request, new FakeResponse('cached-pdf'));
+  cachesByName.set('reader-webapp-shell-v10', cache);
+  const request = new FakeRequest('https://reader.example.test/vendor/marked.esm.mjs');
+  await cache.put(request, new FakeResponse('cached-marked'));
   queueFetch(new Error('offline'));
 
   const event = makeEvent({ request });
@@ -197,13 +197,13 @@ async function testVendorOfflineFallback() {
   const response = await event.responses[0];
   await drainWaitUntil();
 
-  assert.equal(response.body, 'cached-pdf', 'offline vendor request should use cached content');
+  assert.equal(response.body, 'cached-marked', 'offline vendor request should use cached content');
 }
 
 async function testCanonicalNavigationFallsBackOnServerError() {
   resetRuntime();
   const cache = new FakeCache();
-  cachesByName.set('reader-webapp-shell-v9', cache);
+  cachesByName.set('reader-webapp-shell-v10', cache);
   await cache.put(new FakeRequest('https://reader.example.test/index.html'), new FakeResponse('cached-shell'));
   queueFetch(new FakeResponse('server-error', { ok: false, status: 503 }));
 
@@ -217,7 +217,7 @@ async function testCanonicalNavigationFallsBackOnServerError() {
 
 async function testNonCanonicalNavigationKeepsServerError() {
   resetRuntime();
-  cachesByName.set('reader-webapp-shell-v9', new FakeCache());
+  cachesByName.set('reader-webapp-shell-v10', new FakeCache());
   const serverError = new FakeResponse('not-found', { ok: false, status: 404 });
   queueFetch(serverError);
 

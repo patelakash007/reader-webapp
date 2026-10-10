@@ -323,54 +323,6 @@ const path = require('node:path');
   assert.notStrictEqual(idMatches[0], idMatches[1], `Heading IDs collided: ${idMatches[0]} === ${idMatches[1]}`);
   console.log('✓ Heading IDs within parsed document are distinct.');
 
-  console.log('\n--- 16. Async State Races: Back during edit mode ---');
-  const editRaceContext = createAppContext({
-    readerContent: { textContent: '', hidden: false, insertAdjacentHTML() {} },
-    readerEditor: { value: 'Original Text', hidden: true, focus() {}, classList: { remove() {}, add() {} } },
-    editingBanner: { classList: { add() {}, remove() {} } },
-    editBtn: { innerHTML: '', classList: { add() {}, remove() {} }, setAttribute() {} },
-    readerView: { classList: { remove() {}, add() {}, contains: () => false } },
-    inputView: { classList: { remove() {}, add() {} } },
-    backBtn: { classList: { remove() {}, add() {} } },
-    toolbar: { classList: { remove() {}, add() {}, contains: () => false } },
-    wordCount: { classList: { remove() {}, add() {} } },
-    focusRestore: { classList: { remove() {}, add() {} } },
-    sheetBackdrop: { classList: { remove() {}, add() {} } },
-    mobileFab: { classList: { remove() {}, add() {} }, setAttribute() {} },
-    progressBar: { style: {} },
-    pasteArea: { value: '' },
-    clearBtn: { style: {} }
-  });
-  editRaceContext.state.currentText = 'Original Text';
-  const editReader = createReader(editRaceContext, {
-    ui: mockUI,
-    parser: mockParser,
-    tts: mockTTS,
-    getSettings: mockSettings
-  });
-  editReader.enterEditMode();
-  assert.strictEqual(editRaceContext.state.isEditing, true, 'Should be in edit mode');
-  editRaceContext.els.readerEditor.value = 'Mutated but unsaved text';
-  editReader.goBack();
-  assert.strictEqual(editRaceContext.state.isEditing, false, 'Edit mode should be exited');
-  assert.strictEqual(editRaceContext.state.currentText, 'Original Text', 'Cancelled edit should not mutate document');
-  console.log('✓ Back during edit mode cancels cleanly without corrupting text or reopening.');
-
-  console.log('\n--- 17. Async State Races: File switching cancellation ---');
-  let pdfTaskDestroyCalled = false;
-  const fileSwitchContext = createAppContext();
-  fileSwitchContext.runtime.file.activeLoadingTask = {
-    destroy: async () => { pdfTaskDestroyCalled = true; }
-  };
-  const token1 = utils.beginFileRead(fileSwitchContext);
-  utils.cancelPendingFileRead(fileSwitchContext);
-  assert.strictEqual(pdfTaskDestroyCalled, true, 'Active loading task must be destroyed upon file cancellation');
-  assert.strictEqual(fileSwitchContext.runtime.file.activeLoadingTask, null, 'Loading task reference cleared');
-  assert.strictEqual(utils.isActiveFileRead(fileSwitchContext, token1), false, 'Token 1 is stale');
-  const token2 = utils.beginFileRead(fileSwitchContext);
-  assert.strictEqual(utils.isActiveFileRead(fileSwitchContext, token2), true, 'Token 2 is active');
-  console.log('✓ File switching destroys active task and prevents race condition.');
-
   console.log('\n--- 18. TTS: Tokenization invalidation on rerender / setting change ---');
   const ttsInvalidateContext = createAppContext({
     readerContent: { textContent: '', querySelectorAll: () => [], insertAdjacentHTML() {} }
@@ -495,82 +447,6 @@ const path = require('node:path');
   });
   console.log('✓ All preset fonts map honestly to system font stacks (sans, serif, mono).');
 
-  console.log('\n--- 22. DOCX Extraction on Real File ---');
-  const docxPath = path.resolve(__dirname, '../../AI_Industry_State_and_Growth_Report_2025_2026.docx');
-  if (fs.existsSync(docxPath)) {
-    const docxBuf = fs.readFileSync(docxPath);
-    const docxCtx = createAppContext();
-    const readToken = utils.beginFileRead(docxCtx);
-    const docxParser = parser.createParser(docxCtx, { ui: mockUI, onTextLoaded() {} });
-    const extractedDocx = await docxParser.extractDocxText(docxBuf.buffer.slice(docxBuf.byteOffset, docxBuf.byteOffset + docxBuf.byteLength), readToken);
-    assert(extractedDocx.length > 1000, `Expected real docx extraction > 1000 chars, got: ${extractedDocx.length}`);
-    assert(extractedDocx.includes('AI') || extractedDocx.includes('COMPANIES'), 'Extracted docx missing key content');
-    console.log(`✓ Real DOCX successfully extracted ${extractedDocx.length.toLocaleString()} characters.`);
-  } else {
-    console.log('✓ DOCX file not found in parent, skipping real file check.');
-  }
-
-  console.log('\n--- 23. File Loading: parser.handleFile with valid .txt and unsupported format ---');
-  if (typeof global.FileReader === 'undefined') {
-    global.FileReader = class FakeFileReader {
-      readAsText(file) {
-        setTimeout(() => {
-          if (this.onload) this.onload({ target: { result: file._content || '' } });
-        }, 0);
-      }
-      readAsArrayBuffer(file) {
-        setTimeout(() => {
-          let buf = file._buffer;
-          if (!buf && typeof file._content === 'string') {
-            buf = new TextEncoder().encode(file._content).buffer;
-          }
-          if (this.onload) this.onload({ target: { result: buf || new ArrayBuffer(0) } });
-        }, 0);
-      }
-    };
-  }
-  let loadedText = null;
-  let statusReported = null;
-  let statusType = null;
-  const fileTestUI = {
-    ...mockUI,
-    showStatus(msg, type) {
-      statusReported = msg;
-      statusType = type;
-    }
-  };
-  const fileContext = createAppContext();
-  const fileParserInstance = parser.createParser(fileContext, {
-    ui: fileTestUI,
-    onTextLoaded(t) {
-      loadedText = t;
-    }
-  });
-
-  // Valid .txt file
-  const txtEvent = {
-    target: {
-      files: [{ name: 'notes.txt', size: 12, _content: 'Hello World!' }],
-      value: 'notes.txt'
-    }
-  };
-  await fileParserInstance.handleFile(txtEvent);
-  assert.strictEqual(loadedText, 'Hello World!', `Expected onTextLoaded to receive text content, got: ${loadedText}`);
-  assert.strictEqual(txtEvent.target.value, '', 'Input target value should be reset');
-
-  // Unsupported .exe file
-  const exeEvent = {
-    target: {
-      files: [{ name: 'malware.exe', size: 100 }],
-      value: 'malware.exe'
-    }
-  };
-  await fileParserInstance.handleFile(exeEvent);
-  assert(statusReported && statusReported.includes('Unsupported format'), `Expected Unsupported format status, got: ${statusReported}`);
-  assert.strictEqual(statusType, 'error', 'Expected error status type');
-  assert.strictEqual(exeEvent.target.value, '', 'Input target value should be reset for unsupported files');
-  console.log('✓ parser.handleFile successfully loaded .txt and rejected unsupported .exe format.');
-
   console.log('\n--- 24. TTS: Click-to-speak safeguards (unsupported, selection, links) ---');
   let clickHandler = null;
   const mockReaderContent = {
@@ -643,48 +519,6 @@ const path = require('node:path');
   assert.strictEqual(startedSpeechAt, 0, 'Should start speech at word index 0 on first click');
   console.log('✓ Reader click handler safeguards against unsupported TTS, active selection, links, and speaks on first click.');
 
-  console.log('\n--- 25. Editor: Empty edits discarded and text limit enforced on save ---');
-  let lastStatusMsg = null;
-  let lastStatusType = null;
-  const editorUI = {
-    ...mockUI,
-    showStatus(msg, type) {
-      lastStatusMsg = msg;
-      lastStatusType = type;
-    }
-  };
-  const makeClassList = () => ({ add() {}, remove() {}, contains() { return false; } });
-  const editorContext = createAppContext({
-    readerEditor: { value: '   \n\t  ', hidden: false },
-    readerContent: { hidden: true, textContent: 'Initial content', insertAdjacentHTML() {} },
-    editingBanner: { classList: makeClassList() },
-    editBtn: { setAttribute() {}, classList: makeClassList() }
-  });
-  editorContext.state.currentText = 'Original persistent document';
-  editorContext.state.isEditing = true;
-  const editorReader = createReader(editorContext, {
-    ui: editorUI,
-    parser,
-    tts: mockTTS,
-    getSettings: mockSettings
-  });
-
-  // Saving empty edits
-  editorReader.saveAndExitEditMode();
-  assert.strictEqual(editorContext.state.currentText, 'Original persistent document', 'Original text must be preserved on empty save');
-  assert.strictEqual(editorContext.state.isEditing, false, 'Should exit editing mode on empty cancel');
-  assert(lastStatusMsg && lastStatusMsg.includes('Nothing to save'), `Expected 'Nothing to save' message, got: ${lastStatusMsg}`);
-  assert.strictEqual(lastStatusType, 'info');
-
-  // Saving text exceeding limit
-  editorContext.state.isEditing = true;
-  editorContext.els.readerEditor.value = 'A'.repeat(1_000_001);
-  editorReader.saveAndExitEditMode();
-  assert.strictEqual(editorContext.state.isEditing, true, 'Must remain in editing mode when text exceeds limit');
-  assert(lastStatusMsg && lastStatusMsg.includes('contains too much extracted text'), `Expected limit error, got: ${lastStatusMsg}`);
-  assert.strictEqual(lastStatusType, 'error');
-  console.log('✓ Editor save safely handles empty content and enforces character limits.');
-
   console.log('\n--- 26. Markdown: Multi-line ALL-CAPS paragraph does not collapse into single heading with newline (F-08) ---');
   const multiLineAllCaps = 'CHAPTER ONE\nTHE BEGINNING';
   const multiLineHtml = parser.parseMarkdownToHtml(multiLineAllCaps, true);
@@ -699,7 +533,7 @@ const path = require('node:path');
   console.log('✓ Multi-line ALL-CAPS paragraph renders in <p> without collapsed raw newline heading.');
 
   console.log('\n--- 27. DOM Cleanup: goBack clears reader DOM and wordCount text (F-14) ---');
-  const makeClassList2 = () => ({ add() {}, remove() {}, contains() { return false; } });
+  const makeClassList2 = () => ({ add() {}, remove() {}, contains() { return false; }, toggle() {} });
   const backTestContent = { textContent: 'Previously rendered document DOM' };
   const backTestWordCount = { textContent: '1,234 words', classList: makeClassList2() };
   const backContext = createAppContext({
@@ -757,80 +591,6 @@ const path = require('node:path');
   assert.strictEqual(quoteCount, 1, `Expected 1 blockquote, got ${quoteCount}`);
   assert(lazyQuoteHtml.includes('line 1\nlazy continuation line 2') || (lazyQuoteHtml.includes('line 1') && lazyQuoteHtml.includes('lazy continuation line 2')), `Lazy continuation lines should belong to blockquote: ${lazyQuoteHtml}`);
   console.log('✓ CommonMark fidelity preserved across loose lists, setext headings, tilde fences, nested code, tables, and blockquotes.');
-
-  console.log('\n--- 29. UI: Download filename derivation and delayed revocation (F-10) ---');
-  const today = new Date().toISOString().slice(0, 10);
-
-  // 1. Derivation from activeFileName
-  const fn1 = uiModule.deriveDownloadFilename('Text content', 'my-report.markdown');
-  assert.strictEqual(fn1, `my-report_${today}.txt`);
-
-  // 2. Derivation from first heading
-  const fn2 = uiModule.deriveDownloadFilename('# Chapter One: Journey Begins\n\nContent here', '');
-  assert.strictEqual(fn2, `Chapter_One_Journey_Begins_${today}.txt`);
-
-  // 3. Fallback when no heading or activeFileName
-  const fn3 = uiModule.deriveDownloadFilename('Plain paragraph without any headings.', '');
-  assert.strictEqual(fn3, 'Reader_Export.txt');
-
-  const fn4 = uiModule.deriveDownloadFilename('', '');
-  assert.strictEqual(fn4, 'Reader_Export.txt');
-
-  // 4. Delayed revocation logic
-  let listenerRegistered = false;
-  let timeoutRegistered = false;
-  let timeoutMs = 0;
-  global.window = {
-    addEventListener(type) {
-      if (type === 'focus') listenerRegistered = true;
-    },
-    removeEventListener() {},
-    setTimeout(cb, ms) {
-      timeoutRegistered = true;
-      timeoutMs = ms;
-      return 123;
-    },
-    clearTimeout() {}
-  };
-  global.Blob = class { constructor(data) { this.data = data; } };
-  let revokedUrl = null;
-  global.URL = {
-    createObjectURL() {
-      return 'blob:test-123';
-    },
-    revokeObjectURL(url) {
-      revokedUrl = url;
-    }
-  };
-  global.document = {
-    createElement() {
-      return {
-        href: '',
-        download: '',
-        click() {},
-        parentNode: null
-      };
-    },
-    body: {
-      appendChild(node) {
-        node.parentNode = this;
-      },
-      removeChild(node) {
-        node.parentNode = null;
-      }
-    }
-  };
-
-  const dlContext = createAppContext({});
-  dlContext.state.currentText = '# Heading\nBody';
-  const dlUi = uiModule.createUI(dlContext);
-  dlUi.downloadText();
-
-  assert.strictEqual(listenerRegistered, true, 'Window focus listener must be registered for revocation');
-  assert.strictEqual(timeoutRegistered, true, 'Timeout fallback must be scheduled for revocation');
-  assert.strictEqual(timeoutMs, 60000, 'Timeout delay must be 60,000ms');
-  assert.strictEqual(revokedUrl, null, 'URL must not be synchronously revoked on download');
-  console.log('✓ Download filename derived cleanly and URL revocation deferred safely.');
 
   console.log('\n--- 30. Parser: Text encoding detection and BOM sniffing (F-18) ---');
   // 1. Plain UTF-8
@@ -905,68 +665,6 @@ const path = require('node:path');
   Object.defineProperty(global.navigator, 'userAgent', { value: origUserAgent, configurable: true, writable: true });
   console.log('✓ Desktop mouse drag preset handler safely guarded against accidental theme switching.');
 
-  console.log('\n--- 32. Reader: Ruler pageY === 0 coordinate handling (F-21) ---');
-  const rulerEl = {
-    style: {
-      height: '',
-      transform: ''
-    }
-  };
-  const readerContentEl = {
-    contains: () => false
-  };
-  const rulerContext = createAppContext({
-    readingRuler: rulerEl,
-    readerContent: readerContentEl
-  });
-  rulerContext.runtime.reader.isRulerActive = true;
-  const rulerReader = createReader(rulerContext, {
-    ui: mockUI
-  });
-
-  // Call with pageY: 0 (top of viewport/document)
-  rulerReader.updateRulerPosition({ target: null, pageY: 0 });
-  assert.strictEqual(rulerEl.style.height, '28px', 'Ruler height should be 28px for cursor/touch coordinate mode');
-  assert.strictEqual(rulerEl.style.transform, 'translate3d(0, -14px, 0)', 'Ruler transform should be calculated properly when pageY === 0');
-
-  // Call with touch event at pageY: 0
-  rulerEl.style.transform = '';
-  rulerReader.updateRulerPosition({ target: null, touches: [{ pageY: 0 }] });
-  assert.strictEqual(rulerEl.style.transform, 'translate3d(0, -14px, 0)', 'Ruler transform should be calculated properly for touch with pageY === 0');
-  console.log('✓ Reading ruler correctly positions at pageY === 0 without ignoring falsy zero coordinate.');
-
-  console.log('\n--- 33. State & UI: activeFileName declared and populated from handleFile for downloads (F-10 / F-15) ---');
-  const initialCtx = createAppContext();
-  assert('activeFileName' in initialCtx.state, 'state.activeFileName must be declared in initial app state');
-  assert.strictEqual(initialCtx.state.activeFileName, '', 'state.activeFileName defaults to empty string');
-
-  const flowCtx = createAppContext();
-  const flowUI = { ...mockUI };
-  let flowReader;
-  const flowParser = parser.createParser(flowCtx, {
-    ui: flowUI,
-    onTextLoaded: (text, fileName) => flowReader.loadTextFlow(text, 'file', fileName)
-  });
-  flowReader = createReader(flowCtx, {
-    ui: flowUI,
-    parser,
-    tts: mockTTS,
-    getSettings: mockSettings
-  });
-
-  const uploadEvent = {
-    target: {
-      files: [{ name: 'financial-quarterly-report.txt', size: 25, _content: 'Sample financial statement.' }],
-      value: 'financial-quarterly-report.txt'
-    }
-  };
-  await flowParser.handleFile(uploadEvent);
-  assert.strictEqual(flowCtx.state.activeFileName, 'financial-quarterly-report.txt', 'activeFileName must be set from uploaded file name');
-  const flowDownloadUI = uiModule.createUI(flowCtx);
-  const derivedName = flowDownloadUI.getDownloadFilename();
-  assert(derivedName.startsWith('financial-quarterly-report_'), `Expected filename derived from uploaded file name, got: ${derivedName}`);
-  console.log('✓ activeFileName declared in state and derived for download from uploaded file name.');
-
   console.log('\n--- 34. PWA: sw.js precache excludes heavy PDF.js bundles (F-19) ---');
   const swCode = fs.readFileSync(path.join(__dirname, '../sw.js'), 'utf8');
   assert(!swCode.includes("'./vendor/pdf.min.mjs'"), 'sw.js APP_SHELL must not precache vendor/pdf.min.mjs');
@@ -1006,6 +704,134 @@ const path = require('node:path');
   assert.strictEqual(timerContext.runtime.tts.state, 'playing');
   estimateTTS.stopTTS();
   console.log('✓ TTS startEstimateTimer runs without ReferenceError on startingChunkIndex.');
+
+  console.log('\n--- 36. Presets: Swipe gesture transitions seamlessly between light and dark modes (F-22) ---');
+  const swipeContext = createAppContext({
+    presetWindow: { getBoundingClientRect: () => ({ width: 300 }), setAttribute() {} },
+    presetTrack: { classList: makeClassList2(), querySelectorAll: () => [], style: {} },
+    presetDots: { querySelectorAll: () => [] },
+    themeSettingsSummary: { textContent: '' },
+    gestureHint: { classList: makeClassList2() },
+    gestureHintText: { textContent: '' },
+    modeLight: { classList: makeClassList2(), setAttribute() {} },
+    modeDark: { classList: makeClassList2(), setAttribute() {} },
+    readerContent: { style: { setProperty() {}, removeProperty() {} }, classList: makeClassList2() }
+  });
+  const swipeSettings = createSettings(swipeContext, {
+    ui: mockUI,
+    onResetToolbarTimer: () => {},
+    isMobileSheetLayout: () => false
+  });
+  // Start on last preset of Light mode (index 9: Lavender)
+  swipeSettings.setMode('light', { presetIndex: 9 });
+  assert.strictEqual(swipeContext.state.currentMode, 'light');
+  assert.strictEqual(swipeContext.state.currentPresetIndex, 9);
+  assert.strictEqual(constants.lightPresets[9].name, 'Lavender');
+
+  // Swipe next -> must transition to Dark mode preset 0 (Night)
+  swipeSettings.nextPreset();
+  assert.strictEqual(swipeContext.state.currentMode, 'dark', 'Swiping next from last light preset must transition to dark mode');
+  assert.strictEqual(swipeContext.state.currentPresetIndex, 0, 'Swiping next from last light preset must start at index 0');
+  assert.strictEqual(constants.darkPresets[0].name, 'Night');
+
+  // Swipe prev -> must transition back to Light mode preset 9 (Lavender)
+  swipeSettings.prevPreset();
+  assert.strictEqual(swipeContext.state.currentMode, 'light', 'Swiping prev from first dark preset must transition back to light mode');
+  assert.strictEqual(swipeContext.state.currentPresetIndex, 9, 'Swiping prev from first dark preset must land on last light preset');
+
+  // Start on first preset of Light mode (index 0: Claude)
+  swipeSettings.setMode('light', { presetIndex: 0 });
+  // Swipe prev -> must transition to Dark mode preset 9 (Ink)
+  swipeSettings.prevPreset();
+  assert.strictEqual(swipeContext.state.currentMode, 'dark', 'Swiping prev from first light preset must transition to dark mode');
+  assert.strictEqual(swipeContext.state.currentPresetIndex, constants.darkPresets.length - 1, 'Swiping prev from first light preset must land on last dark preset');
+
+  // Swipe next -> must transition to Light mode preset 0 (Claude)
+  swipeSettings.nextPreset();
+  assert.strictEqual(swipeContext.state.currentMode, 'light', 'Swiping next from last dark preset must transition to light mode');
+  assert.strictEqual(swipeContext.state.currentPresetIndex, 0);
+  console.log('✓ Preset swipe gestures seamlessly cycle through all presets across light and dark modes.');
+
+  console.log('\n--- 37. Gestures: Control boundaries protected from accidental swipe gestures ---');
+  const makeNodeWithClosest = tagOrId => ({
+    nodeType: 1,
+    closest(selector) {
+      const parts = selector.split(',').map(s => s.trim().toLowerCase());
+      return parts.some(p => p === tagOrId.toLowerCase()) ? this : null;
+    }
+  });
+  const carouselModule = await import('../src/preset-carousel.mjs');
+  const carouselInstance = carouselModule.createPresetCarousel(swipeContext, {
+    getPresets: () => constants.lightPresets,
+    applyPreset: () => {}
+  });
+  assert.strictEqual(carouselInstance.isBlockedGestureTarget(makeNodeWithClosest('#toolbar')), true, '#toolbar must be blocked');
+  assert.strictEqual(carouselInstance.isBlockedGestureTarget(makeNodeWithClosest('.audio-player-bar')), true, '.audio-player-bar must be blocked');
+  assert.strictEqual(carouselInstance.isBlockedGestureTarget(makeNodeWithClosest('#backBtn')), true, '#backBtn must be blocked');
+  assert.strictEqual(carouselInstance.isBlockedGestureTarget(makeNodeWithClosest('button')), true, 'button must be blocked');
+  assert.strictEqual(carouselInstance.isBlockedGestureTarget(makeNodeWithClosest('p')), false, 'paragraph text must not be blocked');
+  console.log('✓ Controls, back button, audio player, and toolbar are protected against gesture interception.');
+
+  console.log('\n--- 38. Gestures: Touch coordinate resolution with clientX/screenX fallback ---');
+  let touchedPresetCalled = false;
+  const touchCarousel = carouselModule.createPresetCarousel(swipeContext, {
+    getPresets: () => constants.lightPresets,
+    applyPreset: () => {},
+    setMode: () => {}
+  });
+  let registeredTouchListeners = {};
+  const mockGestureTarget = {
+    addEventListener(type, cb) {
+      registeredTouchListeners[type] = cb;
+    }
+  };
+  touchCarousel.attachGestureArea(mockGestureTarget);
+  assert(registeredTouchListeners.touchstart, 'touchstart must be registered');
+  assert(registeredTouchListeners.touchend, 'touchend must be registered');
+
+  // Simulate swipe left with clientX coordinates (100 -> 30, distanceX = -70px, elapsed = 200ms)
+  registeredTouchListeners.touchstart({
+    touches: [{ clientX: 100, clientY: 50 }],
+    target: makeNodeWithClosest('p')
+  });
+  registeredTouchListeners.touchend({
+    changedTouches: [{ clientX: 30, clientY: 52 }],
+    target: makeNodeWithClosest('p')
+  });
+  // Next preset should have been called, changing currentPresetIndex from 0 to 1
+  assert.strictEqual(swipeContext.state.currentPresetIndex, 1, 'Valid horizontal clientX swipe must advance preset');
+
+  // Simulate swipe right with screenX fallback (clientX undefined, 100 -> 180, distanceX = +80px)
+  registeredTouchListeners.touchstart({
+    touches: [{ screenX: 100, screenY: 50 }],
+    target: makeNodeWithClosest('p')
+  });
+  registeredTouchListeners.touchend({
+    changedTouches: [{ screenX: 180, screenY: 52 }],
+    target: makeNodeWithClosest('p')
+  });
+  assert.strictEqual(swipeContext.state.currentPresetIndex, 0, 'Valid horizontal screenX swipe right must return to prev preset');
+
+  // Verify multi-touch cancellation in touchmove
+  registeredTouchListeners.touchstart({
+    touches: [{ clientX: 100, clientY: 50 }],
+    target: makeNodeWithClosest('p')
+  });
+  assert.strictEqual(swipeContext.state.isGesture, true, 'isGesture must be true after single touchstart');
+  registeredTouchListeners.touchmove({
+    touches: [{ clientX: 120, clientY: 50 }, { clientX: 200, clientY: 50 }]
+  });
+  assert.strictEqual(swipeContext.state.isGesture, false, 'Multi-touch touchmove must cancel isGesture');
+
+  // Verify touchcancel resets isGesture
+  registeredTouchListeners.touchstart({
+    touches: [{ clientX: 100, clientY: 50 }],
+    target: makeNodeWithClosest('p')
+  });
+  assert.strictEqual(swipeContext.state.isGesture, true, 'isGesture must be true after touchstart');
+  registeredTouchListeners.touchcancel();
+  assert.strictEqual(swipeContext.state.isGesture, false, 'touchcancel must reset isGesture');
+  console.log('✓ Touch coordinate resolution with clientX/screenX fallback verified.');
 
   console.log('\n====================================================');
   console.log('ALL REGRESSION TESTS PASSED SUCCESSFULLY');

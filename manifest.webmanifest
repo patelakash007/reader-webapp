@@ -1,7 +1,7 @@
 {
   "name": "Reader Webapp",
   "short_name": "Reader",
-  "description": "local-first reading app for text, Markdown, PDF, and DOCX",
+  "description": "Minimal personal reading app for copied text and Markdown with visual presets, swipe gestures, and TTS",
   "id": "./",
   "start_url": "./",
   "scope": "./",

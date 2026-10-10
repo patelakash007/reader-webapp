@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Reader Webapp - Safe &amp; Local eReader</title>
-<meta name="description" content="A state-of-the-art, fully client-side premium document reader. Processes PDFs, DOCX, Markdown, and TXT files entirely inside the browser with built-in TTS and custom typography presets.">
+<title>Reader Webapp - Minimal Text &amp; Markdown Reader</title>
+<meta name="description" content="A minimal personal reader for copied text and Markdown with visual presets, swipe gestures, and TTS speech synthesis.">
 <meta name="theme-color" content="#9a3524">
 <meta name="application-name" content="Reader Webapp">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Reader">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -21,39 +21,19 @@
 <body>
 <div id="app">
   <div id="progressBar"></div>
-  <div id="readingRuler" class="reading-ruler"></div>
   <div class="sheet-backdrop" id="sheetBackdrop"></div>
-  
-  <div class="editing-banner" id="editingBanner">
-    <span>You are in editing mode. Changes stay only in this open page session.</span>
-    <div class="editing-banner-actions">
-      <button id="cancelEditBannerBtn" class="btn-banner-cancel" type="button">Cancel</button>
-      <button id="saveEditBannerBtn" type="button">Save &amp; Exit</button>
-    </div>
-  </div>
 
   <button class="mobile-fab" id="mobileFab" type="button" aria-label="Open Reading Settings" aria-controls="toolbar" aria-expanded="false"><span aria-hidden="true">&#x1F39B;&#xFE0F;</span></button>
 
   <main id="inputView">
     <h1 class="brand">Reader</h1>
-    <div class="subtitle">Paste your text or drop a file anywhere here</div>
+    <div class="subtitle">Paste copied text or Markdown to start reading</div>
     <textarea class="paste-area" id="pasteArea" aria-label="Text to read" placeholder="Paste text here..." autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
     <div class="controls-row">
       <button class="btn btn-primary" id="readBtn" type="button">Read Text</button>
-      <label class="file-input-wrap btn btn-secondary" for="fileInput">
-        <span>Upload File</span>
-        <input type="file" id="fileInput" accept=".txt,.md,.markdown,.pdf,.docx" autocomplete="off">
-      </label>
       <button class="btn btn-secondary" id="clearBtn" type="button" style="display:none;">Clear</button>
     </div>
     <div class="status-message" id="statusMessage" role="status" aria-live="polite"></div>
-    
-    <!-- Polished Local Processing Notice -->
-    <div class="privacy-banner">
-      <span aria-hidden="true">&#x1F512;</span> <strong>Local processing:</strong> Document content is processed in your browser. PDF.js and Mammoth parser libraries are bundled locally in this repo. Documents and preferences are not saved by the app.
-    </div>
-    
-    <div class="note-text">Note: Multi-column PDFs and complex DOCX layouts may occasionally extract text out of order due to browser limitations.</div>
   </main>
 
   <section id="readerView" aria-label="Reader view">
@@ -126,33 +106,11 @@
           </div>
         </section>
 
-        <section class="settings-section" data-settings-section="tools">
-          <button class="settings-section-toggle" type="button" aria-expanded="false" aria-controls="toolsSettingsPanel">
-            <span>
-              <span class="settings-section-title">Reading Tools</span>
-              <span class="settings-section-summary">Focus, ruler, TOC, edit</span>
-            </span>
-            <span class="settings-section-chevron" aria-hidden="true"></span>
-          </button>
-          <div class="settings-section-panel" id="toolsSettingsPanel" hidden>
-            <div class="settings-panel-inner">
-              <div class="tool-grid">
-                <button class="tb-btn" id="focusBtn" type="button" title="Hide UI" aria-label="Hide UI" aria-pressed="false"><span aria-hidden="true">&#9974;</span> Focus</button>
-                <button class="tb-btn" id="fullscreenBtn" type="button" title="Enter Fullscreen" aria-label="Enter Fullscreen" aria-pressed="false"><span aria-hidden="true">&#x26F6;</span> Fullscreen</button>
-                <button class="tb-btn" id="rulerBtn" type="button" title="Enable Reading Ruler" aria-label="Enable Reading Ruler" aria-pressed="false"><span aria-hidden="true">&#x1F4CF;</span> Ruler</button>
-                <button class="tb-btn" id="tocBtn" type="button" title="Table of Contents" aria-label="Table of Contents"><span aria-hidden="true">&#x2630;</span> Contents</button>
-                <button class="tb-btn" id="downloadBtn" type="button" title="Download Text" aria-label="Download Text"><span aria-hidden="true">&#x2B07;</span> Download</button>
-                <button class="tb-btn" id="editBtn" type="button" title="Edit Text" aria-label="Edit Text" aria-pressed="false"><span aria-hidden="true">&#x270E;</span> Edit</button>
-              </div>
-            </div>
-          </div>
-        </section>
-
         <section class="settings-section" data-settings-section="listen">
           <button class="settings-section-toggle" type="button" aria-expanded="false" aria-controls="listenSettingsPanel">
             <span>
-              <span class="settings-section-title">Listen &amp; Auto-scroll</span>
-              <span class="settings-section-summary">Speech and motion speed</span>
+              <span class="settings-section-title">Speech (TTS)</span>
+              <span class="settings-section-summary">Voice and speed</span>
             </span>
             <span class="settings-section-chevron" aria-hidden="true"></span>
           </button>
@@ -161,7 +119,6 @@
               <div class="tool-grid compact-tool-grid">
                 <button class="tb-btn" id="ttsBtn" type="button" title="Start Read Aloud" aria-label="Start Read Aloud" aria-pressed="false"><span aria-hidden="true">&#x1F50A;</span> Read Aloud</button>
                 <button class="tb-btn" id="ttsStopBtn" type="button" title="Stop Read Aloud" aria-label="Stop Read Aloud" disabled><span aria-hidden="true">&#x23F9;</span> Stop</button>
-                <button class="tb-btn" id="autoScrollBtn" type="button" title="Start Auto Scroll" aria-label="Start Auto Scroll" aria-pressed="false"><span aria-hidden="true">&#x25B6;</span> Auto-scroll</button>
               </div>
               <div class="settings-row">
                 <div class="control-item voice-control">
@@ -175,44 +132,16 @@
                   </div>
                   <input type="range" id="voiceRateInput" min="0.5" max="2.5" step="0.1" value="1.0">
                 </div>
-                <div class="control-item">
-                  <div class="control-label-row">
-                    <label for="scrollSpeedInput">Scroll Speed</label>
-                    <span class="value-display" id="scrollSpeedVal">1.0x</span>
-                  </div>
-                  <input type="range" id="scrollSpeedInput" min="0.01" max="0.2" step="0.01" value="0.04">
-                </div>
               </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="settings-section" data-settings-section="parsing">
-          <button class="settings-section-toggle" type="button" aria-expanded="false" aria-controls="parsingSettingsPanel">
-            <span>
-              <span class="settings-section-title">Parsing</span>
-              <span class="settings-section-summary">Smart headings</span>
-            </span>
-            <span class="settings-section-chevron" aria-hidden="true"></span>
-          </button>
-          <div class="settings-section-panel" id="parsingSettingsPanel" hidden>
-            <div class="settings-panel-inner">
-              <label class="control-item checkbox-control">
-                <input type="checkbox" id="smartHeadingsInput" checked>
-                <span>Smart headings</span>
-              </label>
             </div>
           </div>
         </section>
       </div>
     </div>
 
-    <!-- Semantic article element for reader focus -->
+    <!-- Semantic article element for reader content -->
     <article class="reader-content fs-medium" id="readerContent"></article>
-    <textarea class="reader-editor fs-medium" id="readerEditor" aria-label="Edit raw document text" spellcheck="false" hidden></textarea>
-    <div class="wordcount" id="wordCount"></div>
     <div class="status-message reader-status-message" id="readerStatusMessage" role="status" aria-live="polite"></div>
-    <button id="focusRestore" type="button" title="Show UI" aria-label="Show UI"><span aria-hidden="true">&#8853;</span></button>
 
     <!-- Floating Audio Player Bar -->
     <div class="audio-player-bar" id="audioPlayerBar" role="region" aria-label="Audio player controls">
@@ -237,14 +166,6 @@
     <div class="spinner"></div>
     <div class="loader-text">Loading text&#8230;</div>
   </div>
-  
-  <dialog id="tocDialog" class="modal" aria-labelledby="tocTitle">
-    <div class="modal-header">
-      <h3 id="tocTitle">Table of Contents</h3>
-      <button id="closeTocBtn" type="button" aria-label="Close Table of Contents"><span aria-hidden="true">&times;</span></button>
-    </div>
-    <div class="modal-body" id="tocBody"></div>
-  </dialog>
 </div>
 
 <script src="script.js" defer></script>

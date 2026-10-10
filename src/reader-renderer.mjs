@@ -2,6 +2,7 @@ import { createMarkdownRenderer } from './parser.mjs';
 
 export function createReaderRenderer(context, { ui, tts, applyTextColor }) {
   const { els, state, runtime } = context;
+
   function renderTextAsync(text, onComplete, options = {}) {
     if (!els.readerContent) return;
     const renderId = ++runtime.reader.activeRenderId;
@@ -60,7 +61,6 @@ export function createReaderRenderer(context, { ui, tts, applyTextColor }) {
         if (tts && typeof tts.invalidateTokenization === 'function') {
           tts.invalidateTokenization();
         }
-        // Lazy tokenization: TTS tokenization runs on-demand when TTS starts, not synchronously on initial render
         if (shouldShowLoader) ui.hideLoader();
         if (onComplete && renderId === runtime.reader.activeRenderId) onComplete();
       } catch (err) {
@@ -80,28 +80,5 @@ export function createReaderRenderer(context, { ui, tts, applyTextColor }) {
     }
   }
 
-  function updateWordCount() {
-    if (!els.wordCount) return;
-    const text = state.isEditing && els.readerEditor
-      ? els.readerEditor.value
-      : (state.currentText || (els.readerContent ? els.readerContent.textContent : ''));
-    let words = 0;
-    const re = /\S+/g;
-    while (re.exec(text) !== null) words += 1;
-    const minutes = Math.ceil(words / 238);
-    const timeString = words < 238 ? '< 1 min read' : `~${minutes} min read`;
-    els.wordCount.textContent = `${words.toLocaleString()} words · ${timeString}`;
-  }
-
-  function scheduleWordCountUpdate() {
-    if (typeof window !== 'undefined' && window.clearTimeout) {
-      window.clearTimeout(state.wordCountTimer);
-      state.wordCountTimer = window.setTimeout(updateWordCount, 0);
-    } else {
-      updateWordCount();
-    }
-  }
-
-
-  return { renderTextAsync, scheduleWordCountUpdate, updateWordCount };
+  return { renderTextAsync };
 }
