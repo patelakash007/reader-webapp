@@ -397,6 +397,14 @@ async function runDeepPlaywrightChecks() {
     await mobilePage.click('#mobileFab');
     await mobilePage.waitForSelector('#toolbar.expanded');
     await mobilePage.waitForSelector('#settingsDrawer.active');
+    await mobilePage.waitForFunction(() => {
+      const toolbar = document.querySelector('#toolbar');
+      const toolbarRect = toolbar ? toolbar.getBoundingClientRect() : { top: 0 };
+      const fab = document.querySelector('#mobileFab');
+      const fabRect = fab ? fab.getBoundingClientRect() : null;
+      return Boolean(fabRect && fabRect.width > 0 && fabRect.height > 0 && fabRect.bottom <= toolbarRect.top + 8);
+    });
+    await mobilePage.waitForTimeout(450);
     const mobileState = await mobilePage.evaluate(() => {
       const toolbar = document.querySelector('#toolbar');
       const toolbarRect = toolbar ? toolbar.getBoundingClientRect() : { top: 0 };
@@ -416,6 +424,7 @@ async function runDeepPlaywrightChecks() {
         fabExpanded: document.querySelector('#mobileFab')?.getAttribute('aria-expanded'),
         fabVisible: Boolean(fabRect && fabRect.width > 0 && fabRect.height > 0),
         fabAboveSheet: Boolean(fabRect && fabRect.bottom <= toolbarRect.top + 8),
+        fabRect: fabRect ? { top: fabRect.top, bottom: fabRect.bottom, left: fabRect.left, right: fabRect.right } : null,
         toolbarExpanded: toolbar?.classList.contains('expanded'),
         toolbarTop: toolbarRect.top,
         toolbarScrollTop: toolbar ? toolbar.scrollTop : 0,
@@ -429,7 +438,7 @@ async function runDeepPlaywrightChecks() {
     });
     assert(mobileState.fabExpanded === 'true' && mobileState.toolbarExpanded && mobileState.drawerExpanded, 'Mobile sheet or settings state did not expand.');
     assert(mobileState.fabVisible, 'Mobile settings close pill was hidden while the sheet was open.');
-    assert(mobileState.fabAboveSheet, 'Mobile settings close pill overlapped the bottom sheet controls.');
+    assert(mobileState.fabAboveSheet, `Mobile settings close pill overlapped the bottom sheet controls (fabBottom=${mobileState.fabRect?.bottom}, toolbarTop=${mobileState.toolbarTop}).`);
     assert(mobileState.toolbarTop >= 120, `Mobile sheet left too little tappable backdrop above it: top=${mobileState.toolbarTop}.`);
     assert(mobileState.toolbarScrollTop === 0, `Mobile settings drawer scrolled top controls away: scrollTop=${mobileState.toolbarScrollTop}.`);
     assert(mobileState.sectionStates.find(section => section.name === 'theme')?.expanded === 'true', 'Theme section was not open by default on mobile.');
