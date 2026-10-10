@@ -58,7 +58,9 @@ export function createReaderRenderer(context, { ui, tts, applyTextColor }) {
         }
         if (renderId !== runtime.reader.activeRenderId) return;
         applyTextColor();
-        if (tts && typeof tts.invalidateTokenization === 'function') {
+        if (tts && typeof tts.tokenize === 'function') {
+          tts.tokenize();
+        } else if (tts && typeof tts.invalidateTokenization === 'function') {
           tts.invalidateTokenization();
         }
         if (shouldShowLoader) ui.hideLoader();
