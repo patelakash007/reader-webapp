@@ -65,6 +65,12 @@ export function createUI(context) {
 
   function setContainerFocusable(container, enabled) {
     if (!container) return;
+      const isEnabled = Boolean(enabled);
+      if (typeof container.setAttribute === 'function' && typeof container.removeAttribute === 'function') {
+            if (isEnabled) container.removeAttribute('aria-hidden');
+            else container.setAttribute('aria-hidden', 'true');
+      }
+      container.inert = !isEnabled;
     container.querySelectorAll('button, input, [tabindex], select').forEach(element => {
       if (enabled) {
         if (element.dataset.savedTabindex !== undefined) {
