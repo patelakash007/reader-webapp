@@ -2,7 +2,7 @@ import { escapeHtml } from './utils.mjs';
 import { Marked } from '../vendor/marked.esm.mjs';
 
 function decodeHtmlAttributeValue(value) {
-  if (typeof document === 'undefined') {
+  if (typeof document === 'undefined')  || typeof document.createElement !== 'function'{
     return String(value).replace(/&(?:amp|lt|gt|quot|#039|#x27);/gi, entity => ({
       '&amp;': '&',
       '&lt;': '<',
@@ -30,7 +30,7 @@ export function normalizeSafeLinkHref(escapedUrl) {
   if (!isSafe) return null;
 
   try {
-    return escapeHtml(encodeURI(cleanUrl));
+    return escapeHtml(encodeURI(cleanUrl).replace(/%25([0-9A-Fa-f]{2})/g, '%$1'));
   } catch (err) {
     return null;
   }
@@ -61,7 +61,8 @@ export function createMarkedInstance() {
       link(token) {
         const safeHref = normalizeSafeLinkHref(token.href);
         const text = this.parser.parseInline(token.tokens);
-        if (!safeHref) return text;
+        if (!safeHref) return text        if (safeHref.startsWith('#')) return `<a href="${safeHref}">${text}</a>`;
+        ;
         return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${text}</a>`;
       },
       image(token) {
