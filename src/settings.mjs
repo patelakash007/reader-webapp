@@ -213,6 +213,7 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
         if (state.isDraggingCarousel) state.dragCurrentX = event.touches[0].clientX;
       }, { passive: true });
       els.presetWindow.addEventListener('touchend', endCarouselDrag, { passive: true });
+          els.presetWindow.addEventListener('touchcancel', endCarouselDrag, { passive: true });
       els.presetWindow.addEventListener('mousedown', event => {
         if (canStartCarouselDrag(event.target)) startCarouselDrag(event.clientX);
       });
@@ -240,10 +241,12 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
         }
       });
     }
-    window.addEventListener('mousemove', event => {
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('mousemove', event => {
       if (state.isDraggingCarousel) state.dragCurrentX = event.clientX;
     });
     window.addEventListener('mouseup', endCarouselDrag);
+    }
     if (els.readerView) attachGestureArea(els.readerView);
     else if (els.readerContent) attachGestureArea(els.readerContent);
     if (els.lineHeightInput) els.lineHeightInput.addEventListener('input', () => setLineHeight(els.lineHeightInput.value));
