@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Local-first browser reader app.",
+    "engines": { "node": ">=18.0.0" },
   "scripts": {
     "test:syntax": "node scripts/check-syntax.js",
     "test:pwa": "node scripts/validate-pwa.js && node tests/test_pwa.js",
