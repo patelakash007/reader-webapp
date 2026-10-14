@@ -625,6 +625,7 @@ const path = require('node:path');
     },
     removeEventListener() {}
   };
+ if (!global.navigator) global.navigator = {};
   const origTouchPoints = global.navigator?.maxTouchPoints;
   const origUserAgent = global.navigator?.userAgent;
   Object.defineProperty(global.navigator, 'maxTouchPoints', { value: 0, configurable: true, writable: true });
