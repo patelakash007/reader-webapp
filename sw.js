@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'reader-webapp-shell-v10';
+const CACHE_NAME = 'reader-webapp-shell-v11';
 const CACHE_PREFIX = 'reader-webapp-';
 const APP_SHELL = [
   './',
@@ -97,6 +97,7 @@ async function navigationResponse(request, event) {
     return fetch(request);
   }
 
+  const canonicalNavigation = isCanonicalNavigation(request);
   const cache = await caches.open(CACHE_NAME);
 
   try {
@@ -106,9 +107,11 @@ async function navigationResponse(request, event) {
       return response;
     }
 
+    if (!canonicalNavigation) return response || Response.error();
     const cachedShell = await cache.match(INDEX_URL) || await cache.match(ROOT_URL);
     return cachedShell || response || Response.error();
   } catch (err) {
+    if (!canonicalNavigation) return Response.error();
     const cachedShell = await cache.match(INDEX_URL) || await cache.match(ROOT_URL);
     return cachedShell || Response.error();
   }
