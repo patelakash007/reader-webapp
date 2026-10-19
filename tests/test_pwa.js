@@ -151,16 +151,18 @@ async function testInstallAndActivateVersionedCaches() {
   await drainWaitUntil();
 
   assert.equal(self.skipWaitingCalls > 0, true, 'install should call skipWaiting');
-  assert.equal(cachesByName.has('reader-webapp-shell-v10'), true, 'install should create current cache');
+  assert.equal(cachesByName.has('reader-webapp-shell-v11'), true, 'install should create current cache');
 
   cachesByName.set('reader-webapp-shell-v9', new FakeCache());
+  cachesByName.set('reader-webapp-shell-v10', new FakeCache());
   cachesByName.set('unrelated-cache', new FakeCache());
   const activateEvent = makeEvent();
   eventHandlers.get('activate')(activateEvent);
   await drainWaitUntil();
 
   assert.equal(cachesByName.has('reader-webapp-shell-v9'), false, 'old reader cache should be deleted');
-  assert.equal(cachesByName.has('reader-webapp-shell-v10'), true, 'current reader cache should remain');
+  assert.equal(cachesByName.has('reader-webapp-shell-v10'), false, 'previous reader cache should be deleted');
+  assert.equal(cachesByName.has('reader-webapp-shell-v11'), true, 'current reader cache should remain');
   assert.equal(cachesByName.has('unrelated-cache'), true, 'unrelated caches should not be deleted');
   assert.equal(self.clients.claimCalls > 0, true, 'activate should claim clients');
 }
@@ -168,7 +170,7 @@ async function testInstallAndActivateVersionedCaches() {
 async function testVendorUsesStaleWhileRevalidate() {
   resetRuntime();
   const cache = new FakeCache();
-  cachesByName.set('reader-webapp-shell-v10', cache);
+  cachesByName.set('reader-webapp-shell-v11', cache);
   const request = new FakeRequest('https://reader.example.test/vendor/marked.esm.mjs');
   await cache.put(request, new FakeResponse('old-vendor'));
   queueFetch(new FakeResponse('new-vendor'));
@@ -187,7 +189,7 @@ async function testVendorUsesStaleWhileRevalidate() {
 async function testVendorOfflineFallback() {
   resetRuntime();
   const cache = new FakeCache();
-  cachesByName.set('reader-webapp-shell-v10', cache);
+  cachesByName.set('reader-webapp-shell-v11', cache);
   const request = new FakeRequest('https://reader.example.test/vendor/marked.esm.mjs');
   await cache.put(request, new FakeResponse('cached-marked'));
   queueFetch(new Error('offline'));
@@ -203,7 +205,7 @@ async function testVendorOfflineFallback() {
 async function testCanonicalNavigationFallsBackOnServerError() {
   resetRuntime();
   const cache = new FakeCache();
-  cachesByName.set('reader-webapp-shell-v10', cache);
+  cachesByName.set('reader-webapp-shell-v11', cache);
   await cache.put(new FakeRequest('https://reader.example.test/index.html'), new FakeResponse('cached-shell'));
   queueFetch(new FakeResponse('server-error', { ok: false, status: 503 }));
 
@@ -217,7 +219,9 @@ async function testCanonicalNavigationFallsBackOnServerError() {
 
 async function testNonCanonicalNavigationKeepsServerError() {
   resetRuntime();
-  cachesByName.set('reader-webapp-shell-v10', new FakeCache());
+  const cache = new FakeCache();
+  cachesByName.set('reader-webapp-shell-v11', cache);
+  await cache.put(new FakeRequest('https://reader.example.test/index.html'), new FakeResponse('cached-shell'));
   const serverError = new FakeResponse('not-found', { ok: false, status: 404 });
   queueFetch(serverError);
 
@@ -226,7 +230,22 @@ async function testNonCanonicalNavigationKeepsServerError() {
   eventHandlers.get('fetch')(event);
   const response = await event.responses[0];
 
-  assert.equal(response, serverError, 'non-canonical navigation should preserve server response');
+  assert.equal(response, serverError, 'non-canonical navigation should preserve server response even when the app shell is cached');
+}
+
+async function testNonCanonicalNavigationDoesNotUseAppShellWhenOffline() {
+  resetRuntime();
+  const cache = new FakeCache();
+  cachesByName.set('reader-webapp-shell-v11', cache);
+  await cache.put(new FakeRequest('https://reader.example.test/index.html'), new FakeResponse('cached-shell'));
+  queueFetch(new Error('offline'));
+
+  const request = new FakeRequest('https://reader.example.test/other-route', { mode: 'navigate' });
+  const event = makeEvent({ request });
+  eventHandlers.get('fetch')(event);
+  const response = await event.responses[0];
+
+  assert.equal(response.status, 0, 'non-canonical navigation should return a network error rather than the cached app shell');
 }
 
 async function run() {
@@ -235,7 +254,8 @@ async function run() {
     ['vendor stale-while-revalidate', testVendorUsesStaleWhileRevalidate],
     ['vendor offline fallback', testVendorOfflineFallback],
     ['navigation fallback on HTTP error', testCanonicalNavigationFallsBackOnServerError],
-    ['non-canonical navigation preserves HTTP error', testNonCanonicalNavigationKeepsServerError]
+    ['non-canonical navigation preserves HTTP error', testNonCanonicalNavigationKeepsServerError],
+    ['non-canonical navigation does not mask offline errors', testNonCanonicalNavigationDoesNotUseAppShellWhenOffline]
   ];
 
   for (const [name, test] of tests) {
