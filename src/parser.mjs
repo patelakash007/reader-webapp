@@ -1,13 +1,6 @@
 import { MAX_EXTRACTED_TEXT_CHARS } from './constants.mjs';
 import { escapeHtml } from './utils.mjs';
-import {
-  createMarkdownRenderer,
-  createMarkedInstance,
-  isSmartHeading,
-  normalizeSafeLinkHref,
-  parseInline,
-  parseMarkdownToHtml
-} from './markdown-parser.mjs';
+import { parseMarkdownToHtml } from './markdown-parser.mjs';
 
 export { escapeHtml };
 export {
@@ -68,7 +61,7 @@ export function enforceExtractedTextLimit(text, context = 'document') {
   return value;
 }
 
-export function createParser(context, { ui, onTextLoaded } = {}) {
+export function createParser(_context, { ui: _ui, onTextLoaded: _onTextLoaded } = {}) {
   return {
     enforceExtractedTextLimit,
     parseMarkdownToHtml

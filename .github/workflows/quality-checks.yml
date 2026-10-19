@@ -68,6 +68,9 @@ jobs:
       - name: Check JavaScript syntax
         run: npm run test:syntax
 
+      - name: Lint JavaScript with pinned ESLint
+        run: npm run lint
+
       - name: Validate PWA app shell
         run: npm run test:pwa
 

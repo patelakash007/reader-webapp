@@ -85,6 +85,7 @@ for (const filePath of allFiles) {
 
     const stripped = content
       .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/export\s*\{[^}]*\}\s*from\s*['"][^'"]+['"];?/g, '')
       .replace(/\/\/.*/g, '')
       .replace(/"(?:\\.|[^"\\])*"/g, '')
       .replace(/'(?:\\.|[^'\\])*'/g, '')
@@ -98,15 +99,6 @@ for (const filePath of allFiles) {
         console.error(`Missing import in ${path.basename(filePath)}: references '${exportName}' exported by ${path.basename(sourceFile)} without importing it.`);
         process.exit(1);
       }
-    }
-  }
-
-  // 4. ESLint execution if available
-  const eslintBin = path.join(rootDir, 'node_modules', '.bin', 'eslint');
-  if (fs.existsSync(eslintBin)) {
-    const eslintResult = spawnSync(eslintBin, ['src/', 'scripts/', 'tests/'], { encoding: 'utf8', stdio: 'inherit' });
-    if (eslintResult.status !== 0) {
-      process.exit(eslintResult.status || 1);
     }
   }
 

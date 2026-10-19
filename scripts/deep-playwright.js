@@ -1,4 +1,3 @@
-const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const {
@@ -34,14 +33,6 @@ function capturePageErrors(page, target) {
   page.on('pageerror', error => {
     target.push(error.message);
   });
-}
-
-async function getStatusText(page) {
-  try {
-    return await page.locator('#statusMessage').textContent({ timeout: 1500 }) || '';
-  } catch (err) {
-    return '';
-  }
 }
 
 async function waitForText(page, selector, text) {

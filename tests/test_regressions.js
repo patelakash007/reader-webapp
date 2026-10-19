@@ -8,7 +8,6 @@ const path = require('node:path');
   const parser = await import('../src/parser.mjs');
   const tts = await import('../src/tts.mjs');
   const utils = await import('../src/utils.mjs');
-  const uiModule = await import('../src/ui.mjs');
   const { createAppContext } = await import('../src/context.mjs');
   const { createReader } = await import('../src/reader.mjs');
   const { createSettings } = await import('../src/settings.mjs');
@@ -352,7 +351,7 @@ const path = require('node:path');
       this.childNodes.push(child);
       return child;
     }
-    setAttribute(k, v) {}
+    setAttribute(_k, _v) {}
     replaceChild() {}
     closest(sel) {
       const tags = sel.split(',').map(s => s.trim().toUpperCase());
@@ -378,7 +377,7 @@ const path = require('node:path');
   delete global.NodeFilter;
   try {
     const docWalk = {
-      createTreeWalker(root) {
+      createTreeWalker(_root) {
         const nodes = [h4Text, pText];
         let i = -1;
         return {
@@ -773,7 +772,6 @@ const path = require('node:path');
   console.log('✓ Controls, back button, audio player, and toolbar are protected against gesture interception.');
 
   console.log('\n--- 38. Gestures: Touch coordinate resolution with clientX/screenX fallback ---');
-  let touchedPresetCalled = false;
   const touchCarousel = carouselModule.createPresetCarousel(swipeContext, {
     getPresets: () => constants.lightPresets,
     applyPreset: () => {},

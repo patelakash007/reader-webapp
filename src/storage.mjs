@@ -18,30 +18,26 @@ const LEGACY_KEYS = [
 ];
 
 export function cleanupLegacyBrowserStorage() {
-  try {
-    const stores = [];
-    if (typeof window !== 'undefined') {
-      if (window.localStorage) stores.push(window.localStorage);
-      if (window.sessionStorage) stores.push(window.sessionStorage);
+  if (typeof window === 'undefined') return;
+
+  const stores = new Set();
+  for (const storeName of ['localStorage', 'sessionStorage']) {
+    try {
+      const store = window[storeName];
+      if (store) stores.add(store);
+    } catch (error) {
+      // Storage can be unavailable in restricted browser contexts. Continue with
+      // the other storage area rather than abandoning all cleanup.
     }
-    stores.forEach(store => {
-      LEGACY_KEYS.forEach(key => {
-        try { store.removeItem(key); } catch (e) {}
-      });
-      try {
-        const keysToRemove = [];
-        for (let i = 0; i < store.length; i++) {
-          const key = store.key(i);
-          if (key && (key.startsWith('reader_') || key.startsWith('reader-') || key.startsWith('reader:'))) {
-            keysToRemove.push(key);
-          }
-        }
-        keysToRemove.forEach(k => {
-          try { store.removeItem(k); } catch (e) {}
-        });
-      } catch (e) {}
-    });
-  } catch (err) {
-    console.warn('Unable to clean up legacy reader storage.', err);
   }
+
+  stores.forEach(store => {
+    LEGACY_KEYS.forEach(key => {
+      try {
+        store.removeItem(key);
+      } catch (error) {
+        // Storage can become unavailable or reject writes between access and use.
+      }
+    });
+  });
 }
