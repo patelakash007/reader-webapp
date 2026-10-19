@@ -10,7 +10,7 @@ import {
 import { clampIndex, clampNumber, getElementTarget } from './utils.mjs';
 import { createPresetCarousel } from './preset-carousel.mjs';
 
-export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheetLayout }) {
+export function createSettings(context, { ui: _ui, onResetToolbarTimer, isMobileSheetLayout }) {
   const { els, state, runtime } = context;
   const loadedFonts = runtime.fonts.loaded;
   let initialized = false;
@@ -34,18 +34,13 @@ export function createSettings(context, { ui, onResetToolbarTimer, isMobileSheet
     attachGestureArea,
     buildPresetCarousel,
     canStartCarouselDrag,
-    canStartPresetGesture,
     canUseGlobalPresetShortcut,
     endCarouselDrag,
-    getCarouselWidth,
     hasSelectedText,
-    isBlockedGestureTarget,
     nextPreset,
     prevPreset,
     setTrackPosition,
-    showGestureHint,
     startCarouselDrag,
-    updateCarouselDrag,
     updateDots,
     updatePresetA11y,
     updateThemeSettingsSummary
