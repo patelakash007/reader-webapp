@@ -10,8 +10,22 @@ const path = require('node:path');
   const constants = await import('../src/constants.mjs');
   const { createAppContext } = await import('../src/context.mjs');
   const scriptSource = fs.readFileSync(path.join(__dirname, '../script.js'), 'utf8');
+  const indexSource = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 
   console.log('--- Running Reader & TTS Unit and Integration Tests ---');
+
+  const rangeInputs = [...indexSource.matchAll(/<input\b[^>]*\btype="range"[^>]*>/g)];
+  assert(rangeInputs.length > 0, 'Reader settings should declare range inputs');
+  rangeInputs.forEach(([markup]) => {
+    const attributes = Object.fromEntries([...markup.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, name, value]) => [name, value]));
+    const min = Number(attributes.min);
+    const step = Number(attributes.step);
+    const value = Number(attributes.value);
+    assert(Number.isFinite(min) && Number.isFinite(step) && step > 0 && Number.isFinite(value), `Range input must declare finite min, step, and value: ${markup}`);
+    const stepOffset = (value - min) / step;
+    assert(Math.abs(stepOffset - Math.round(stepOffset)) < 1e-8, `Range input default ${value} must align with step ${step} from min ${min}: ${markup}`);
+  });
+  console.log('✓ Check 0: Range input defaults align with their declared steps.');
 
   assert(!scriptSource.includes('.substr('), 'script.js should not contain deprecated String.prototype.substr calls');
   assert(scriptSource.includes("import('./src/app.mjs')"), 'script.js should dynamically import the ES module application entry');
