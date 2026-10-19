@@ -53,7 +53,7 @@ reader-webapp/
 │   ├── markdown-parser.mjs               # Markdown parsing and safe rendering
 │   ├── reader.mjs                        # Reader flow and rendering coordination
 │   ├── reader-renderer.mjs               # Incremental DOM rendering
-│   ├── reader-navigation.mjs              # Reader and mobile settings navigation
+│   ├── reader-navigation.mjs             # Reader and mobile settings navigation
 │   ├── settings.mjs                      # Themes and typography settings
 │   ├── tts-core.mjs                      # Speech text and tokenization helpers
 │   ├── tts-controller.mjs                # Speech playback state and controls
@@ -82,7 +82,7 @@ Run the main checks:
 npm test
 ```
 
-This runs syntax/import validation, app-shell validation, unit and regression tests, and the empirical stress tests.
+This runs syntax/import validation, app-shell validation, unit and regression tests, empirical stress tests, and browser-storage cleanup regression tests. CI also runs the pinned ESLint check and browser smoke/deep-regression suites.
 
 Additional checks are available:
 
@@ -92,6 +92,8 @@ Additional checks are available:
 | `npm run test:smoke` | Browser smoke tests and basic reader interactions |
 | `npm run test:deep` | Deeper browser regression checks |
 | `npm run test:chromium` | Lightweight Chromium-only smoke test |
+| `npm run test:storage` | Legacy browser-storage cleanup and data-isolation regression test |
+| `npm run lint` | ESLint check using pinned ESLint 8.57.1 |
 
 The browser tests need Playwright and a compatible browser executable. The scripts look for `BROWSER_EXE`, `PLAYWRIGHT_CHROMIUM_EXECUTABLE`, or `CHROMIUM_EXECUTABLE` if a browser is not found automatically. CI installs Chromium and runs the browser checks.
 
